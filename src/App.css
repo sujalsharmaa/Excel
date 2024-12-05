@@ -1,0 +1,40 @@
+.made-in-indore {
+  font-size: 2.5rem;
+  font-weight: bold;
+  text-align: center;
+  margin-top: 2rem;
+  color: #fff;
+  background: linear-gradient(90deg, #ff6a00, #ee0979);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  position: relative;
+}
+
+.made-in-indore::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: linear-gradient(90deg, #ff6a00, #ee0979);
+  z-index: -1;
+  filter: blur(8px);
+  opacity: 0.7;
+}
+
+.made-in-indore:hover {
+  animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+  0% {
+    text-shadow: 0 0 10px #ff6a00, 0 0 20px #ee0979, 0 0 30px #ff6a00;
+  }
+  50% {
+    text-shadow: 0 0 20px #ff6a00, 0 0 30px #ee0979, 0 0 40px #ff6a00;
+  }
+  100% {
+    text-shadow: 0 0 10px #ff6a00, 0 0 20px #ee0979, 0 0 30px #ff6a00;
+  }
+}
