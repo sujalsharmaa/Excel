@@ -23,11 +23,25 @@ import {
 } from 'recharts';
 import { toPng } from 'html-to-image';
 
-const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884D8'];
+const COLORS = [
+    '#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884D8', // Original colors
+    '#FF5733', '#C70039', '#900C3F', '#DAF7A6', '#FFC300', // Warm tones
+    '#581845', '#7DCEA0', '#1ABC9C', '#3498DB', '#9B59B6', // Cool tones
+    '#E74C3C', '#2ECC71', '#F1C40F', '#7F8C8D', '#34495E', // Earthy tones
+    '#A569BD', '#D35400', '#BDC3C7', '#27AE60', '#16A085', // More variety
+  ];
+  
+  const randomColors = ['red', 'blue', 'yellow', 'green', 'pink', 'black', 'violet', 'indigo', 'orange'];
+
+  const randomColorsGenerator = () => {
+    const randomIndex = Math.floor(Math.random() * randomColors.length);
+    return randomColors[randomIndex];
+  };
 
 const ExcelClone = () => {
-  const ROWS = 1000;
-  const COLS = 10;
+  const [ROWS, setROWS] = useState(100);
+  const [COLS, setCOLS] = useState(10);
+  
 
   const [data, setData] = useState(() => 
     Array(ROWS).fill().map(() => Array(COLS).fill(''))
@@ -227,28 +241,33 @@ const ExcelClone = () => {
   const importCSV = (e) => {
     const file = e.target.files[0];
     if (!file) return;
-
+  
     const reader = new FileReader();
     reader.onload = (event) => {
       const csvText = event.target.result;
       const rows = csvText.split('\n').map(row => 
-        row.split(',').map(cell => 
-          cell.replace(/^"|"$/g, '')
-        )
+        row.split(',').map(cell => cell.replace(/^"|"$/g, ''))
       );
-
-      const importedData = Array(ROWS).fill().map((_, rowIndex) => 
-        Array(COLS).fill('').map((_, colIndex) => 
+  
+      const newROWS = rows.length;
+      const newCOLS = Math.max(...rows.map(row => row.length));
+  
+      setROWS(newROWS);
+      setCOLS(newCOLS);
+  
+      const importedData = Array(newROWS).fill().map((_, rowIndex) => 
+        Array(newCOLS).fill('').map((_, colIndex) => 
           rows[rowIndex] && rows[rowIndex][colIndex] ? rows[rowIndex][colIndex] : ''
         )
       );
-
+  
       setData(importedData);
       setFormattedCells(new Set());
       setCalculatedCells(new Set());
     };
     reader.readAsText(file);
   };
+  
 
   // Graphing Logic
   const handleDataSelection = () => {
@@ -297,7 +316,7 @@ const ExcelClone = () => {
       case 'pie':
         return (
           <div ref={graphRef}>
-            <RechartsPieChart width={600} height={400}>
+            <RechartsPieChart width={600} height={450}>
               <Pie
                 data={selectedData}
                 cx={300}
@@ -393,6 +412,13 @@ const ExcelClone = () => {
             className="hidden" 
           />
         </label>
+        <label className="flex items-center gap-2 px-4 py-2 bg-gradient-to-br from-pink-700 to-emerald-500 font-bold text-white rounded hover:bg-purple-600">
+          Made in INDORE
+          <input 
+            className="hidden" 
+          />
+        </label>
+        
       </div>
 
       {/* Graph Modal */}
@@ -421,62 +447,59 @@ const ExcelClone = () => {
       )}
 
       {/* Spreadsheet Table */}
-      <div
-        className="inline-block min-w-full border border-gray-200 rounded"
-        onMouseUp={handleMouseUp}
-      >
-        <table className="min-w-full divide-y divide-gray-200">
-          <thead>
-            <tr>
-              <th className="w-12 bg-gray-100"></th>
-              {Array(COLS).fill().map((_, i) => (
-                <th key={i} className="w-24 bg-gray-100 px-2 py-1 text-center">
-                  {getColumnName(i)}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {data.map((row, rowIndex) => (
-              <tr key={rowIndex}>
-                <td className="bg-gray-100 text-center border-r">{rowIndex + 1}</td>
-                {row.map((cell, colIndex) => {
-                  const isSelected2 = selectedCell?.row === rowIndex && selectedCell?.col === colIndex;
-                  const isSelectedRange = isSelected(rowIndex, colIndex);
-                  const isFormatted = formattedCells.has(`${rowIndex}-${colIndex}`);
-                  
-                  return (
-                    <td
-                      key={colIndex}
-                      className={`border relative ${
-                        isSelectedRange ? 'bg-blue-200' : ''
-                      } ${
-                        isSelected ? 'ring-2 ring-blue-500' : ''
-                      } ${
-                        isFormatted ? 'bg-gray-50 font-medium' : ''
-                      }`}
-                      onMouseDown={() => handleMouseDown(rowIndex, colIndex)}
-                      onMouseOver={() => handleMouseOver(rowIndex, colIndex)}
-                    >
-                      <input
-                        type="text"
-                        value={cell}
-                        onChange={(e) => handleCellChange(rowIndex, colIndex, e.target.value)}
-                        onKeyDown={(e) => handleKeyDown(e, rowIndex, colIndex)}
-                        data-row={rowIndex}
-                        data-col={colIndex}
-                        className="w-full px-2 py-1 focus:outline-none"
-                        placeholder=""
-                      />
-                    </td>
-                  );
-                })}
-              </tr>
-            ))}
-          </tbody>
+        <div className="table-container" onMouseUp={handleMouseUp}>
+  <table className="min-w-full divide-y divide-gray-200">
+    {/* Table content remains the same */}
+    <table className="min-w-full divide-y divide-gray-200">
+    <thead>
+  <tr>
+    <th className="w-12 bg-gray-200"></th>
+    {Array(COLS).fill().map((_, i) => (
+      <th key={i} className="w-24 bg-gray-200 px-2 py-1 text-center">
+        {getColumnName(i)}
+      </th>
+    ))}
+  </tr>
+</thead>
+<tbody>
+  {Array(ROWS).fill().map((_, rowIndex) => (
+    <tr key={rowIndex}>
+      <td className="bg-gray-100 text-center border-r">{rowIndex + 1}</td>
+      {Array(COLS).fill().map((_, colIndex) => {
+        const isSelectedRange = isSelected(rowIndex, colIndex);
+        const isFormatted = formattedCells.has(`${rowIndex}-${colIndex}`);
+        
+        return (
+          <td
+            key={colIndex}
+            className={`border relative ${
+              isSelectedRange ? `bg-black border-2 border-green-800` : ''
+            } ${isFormatted ? 'bg-gray-50 font-medium' : ''}`}
+            onMouseDown={() => handleMouseDown(rowIndex, colIndex)}
+            onMouseOver={() => handleMouseOver(rowIndex, colIndex)}
+          >
+            <input
+              type="text"
+              value={data[rowIndex][colIndex] || ''}
+              onChange={(e) => handleCellChange(rowIndex, colIndex, e.target.value)}
+              onKeyDown={(e)=> handleKeyDown(e,rowIndex,colIndex)}
+              className="w-full px-2 py-1 focus:outline-none"
+              placeholder=""
+            />
+          </td>
+        );
+      })}
+    </tr>
+  ))}
+</tbody>
+
         </table>
+  </table>
+</div>
+
+        
       </div>
-    </div>
+
   );
 };
 
