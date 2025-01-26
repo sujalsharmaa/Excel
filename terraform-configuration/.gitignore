@@ -1,7 +1,3 @@
-<<<<<<< HEAD
-# Logs
-logs
-=======
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
@@ -72,31 +68,10 @@ Thumbs.db
 
 # Logs
 logs/
->>>>>>> 5921726 (added new features and backend)
 *.log
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
-<<<<<<< HEAD
-pnpm-debug.log*
-lerna-debug.log*
-
-node_modules
-dist
-dist-ssr
-*.local
-
-# Editor directories and files
-.vscode/*
-!.vscode/extensions.json
-.idea
-.DS_Store
-*.suo
-*.ntvs*
-*.njsproj
-*.sln
-*.sw?
-=======
 
 # Runtime data
 pids/
@@ -181,4 +156,3 @@ Thumbs.db
 
 # TypeScript compiled output
 *.tsbuildinfo
->>>>>>> 5921726 (added new features and backend)
