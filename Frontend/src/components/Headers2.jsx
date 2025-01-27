@@ -2,7 +2,7 @@ import React from 'react';
 import { UserProfile } from './UserProfile.jsx';
 import {
   FileKey, FileText, ZoomOut, ZoomIn, Bold, Italic, Underline, 
-  AlignLeft, AlignCenter, AlignRight, AlignJustify 
+  AlignLeft, AlignCenter, AlignRight, AlignJustify,BookOpen,FileCog
 } from 'lucide-react';
 import {
   Download, Table, Upload, BarChart2, PieChart, 
@@ -10,7 +10,12 @@ import {
 } from 'lucide-react';
 import { useAuthStore } from '../Store/useStore.js';
 import { AuthGuard } from './AuthGuard.jsx';
+import NewFileButton from './NewFileButton.jsx';
 import { useSpreadsheetStore } from '../Store/useStore.js';
+import { useNavigate } from 'react-router-dom';
+
+//const navigate = useNavigate()
+
 
 const fonts = [
   "Roboto",
@@ -119,7 +124,7 @@ const fonts = [
 function Headers(props) {
   const { isAuthenticated } = useAuthStore();
   const { resetData } = useSpreadsheetStore();
-
+  const navigate = useNavigate();
   const {
     handleDataSelection,
     exportToCSV,
@@ -135,6 +140,9 @@ function Headers(props) {
 
   return (
     <header className="w-full h-28 border-b-4 border-gray-700 bg-gradient-to-r from-gray-900 via-gray-700 to-gray-600 text-white shadow-lg flex items-center justify-between px-4">
+      <div className='border-2 p-2 rounded-md m-2'>
+          file125135
+        </div>
       {/* Left Section: Chart Controls */}
       <div className="flex gap-4 items-center">
         <button
@@ -225,12 +233,27 @@ function Headers(props) {
 
       {/* Right Section: File and Zoom Controls */}
       <div className="flex gap-4 items-center">
+      <NewFileButton />
+      <button 
+  className="flex items-center bg-blue-600 hover:bg-blue-500 text-white p-2 rounded shadow"
+  onClick={() => navigate('/docs')}
+>  
+  <BookOpen className="w-6 h-6" />
+   docs
+</button>
         <button
           onClick={exportToCSV}
           className="flex items-center bg-blue-600 hover:bg-blue-500 text-white p-2 rounded shadow"
         >
           <Download size={20} />
           Export CSV
+        </button>
+        <button
+          onClick={()=>navigate('/admin')}
+          className="flex items-center bg-indigo-600 hover:bg-indigo-500 text-white p-2 rounded shadow"
+        >
+          <FileCog />
+          Admin Panel
         </button>
         <label className="flex items-center bg-purple-600 hover:bg-purple-500 text-white p-2 rounded shadow cursor-pointer">
           <Upload size={20} />
@@ -243,6 +266,7 @@ function Headers(props) {
             className="hidden"
           />
         </label>
+
 
       </div>
 

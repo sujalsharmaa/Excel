@@ -4,7 +4,7 @@ import { generateSignedUrl } from '../utils/s3Utils.js';
 import axios from "axios"
 import { User } from '../Model/Db_config.js';
 import { redisCache } from '../Cache/RedisConfig.js';
-import { Parser } from 'json2csv';
+
 
 export const router = Router();
 

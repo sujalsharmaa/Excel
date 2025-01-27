@@ -1,5 +1,5 @@
-import React, { useState, useCallback, useRef } from 'react';
-import { useSpreadsheetStore } from '../Store/useStore.js';
+import React, { useState, useCallback, useRef, useEffect } from 'react';
+import { useSpreadsheetStore } from '../Store/useStore';
 import Headers from './Headers';
 import { Download } from 'lucide-react';
 import {
@@ -27,6 +27,26 @@ const COLORS = [
   '#A569BD', '#D35400', '#BDC3C7', '#27AE60', '#16A085',
 ];
 
+// Function metadata for suggestions
+const FUNCTION_SIGNATURES = {
+  SUM: 'SUM(number1, [number2], ...)',
+  AVERAGE: 'AVERAGE(number1, [number2], ...)',
+  VLOOKUP: 'VLOOKUP(lookup_value, table_array, col_index, [range_lookup])',
+  IF: 'IF(logical_test, value_if_true, value_if_false)',
+  COUNT: 'COUNT(value1, [value2], ...)',
+  MAX: 'MAX(number1, [number2], ...)',
+  MIN: 'MIN(number1, [number2], ...)',
+  ROUND: 'ROUND(number, num_digits)',
+  CONCATENATE: 'CONCATENATE(text1, [text2], ...)',
+  TODAY: 'TODAY()',
+  NOW: 'NOW()',
+  AND: 'AND(logical1, [logical2], ...)',
+  OR: 'OR(logical1, [logical2], ...)',
+  TEXT: 'TEXT(value, format_text)',
+  DATE: 'DATE(year, month, day)',
+  PMT: 'PMT(rate, nper, pv, [fv], [type])',
+};
+
 const ExcelClone = () => {
   const { ROWS, COLS, data, setCellValue, importData } = useSpreadsheetStore();
   const [selectedCell, setSelectedCell] = useState(null);
@@ -47,37 +67,102 @@ const ExcelClone = () => {
   const [fontSize, setFontSize] = useState(16);
   const [fontFamily, setFontFamily] = useState('Arial');
   const [zoomLevel, setZoomLevel] = useState(100);
+  
+  // Formula suggestions state
+  const [showFormulaSuggestions, setShowFormulaSuggestions] = useState(false);
+  const [formulaPrefix, setFormulaPrefix] = useState('');
+  const [suggestedFunctions, setSuggestedFunctions] = useState([]);
+  const [selectedSuggestionIndex, setSelectedSuggestionIndex] = useState(0);
+  const [dropdownPosition, setDropdownPosition] = useState({ left: 0, top: 0 });
+  const activeInputRef = useRef(null);
 
-  // Text formatting handlers (keep existing)
+  // Combined function list
+  const allFunctions = [
+    ...Object.keys(formulajs).filter(k => typeof formulajs[k] === 'function'),
+    ...Object.keys(FUNCTION_SIGNATURES)
+  ].filter((v, i, a) => a.indexOf(v) === i);
 
-  // Cell selection logic (keep existing)
-  // Handlers for text formatting, alignment, font, and zoom
-  const handleTextFormat = (formatType) => {
-    setTextFormat(prev => ({
-      ...prev,
-      [formatType]: !prev[formatType]
-    }));
+  // Formula suggestion handlers
+  const handleFormulaInput = (e, row, col) => {
+    const value = e.target.value;
+    handleChange(row, col, value);
+    
+    if (value.startsWith('=')) {
+      const input = value.slice(1);
+      const caretPosition = e.target.selectionStart;
+      const currentWord = input.substring(0, caretPosition).split(/[^a-zA-Z]/).pop();
+      
+      setFormulaPrefix(currentWord.toUpperCase());
+      setShowFormulaSuggestions(true);
+      setSelectedSuggestionIndex(0);
+      
+      if (activeInputRef.current) {
+        const rect = activeInputRef.current.getBoundingClientRect();
+        setDropdownPosition({
+          left: rect.left + window.scrollX,
+          top: rect.bottom + window.scrollY
+        });
+      }
+    } else {
+      setShowFormulaSuggestions(false);
+    }
   };
 
-  const handleTextAlignment = (alignment) => {
-    setTextAlignment(alignment);
+  const handleFormulaKeyDown = (e, row, col) => {
+    if (showFormulaSuggestions) {
+      switch (e.key) {
+        case 'ArrowDown':
+          e.preventDefault();
+          setSelectedSuggestionIndex(prev => 
+            Math.min(prev + 1, suggestedFunctions.length - 1)
+          );
+          break;
+        case 'ArrowUp':
+          e.preventDefault();
+          setSelectedSuggestionIndex(prev => Math.max(prev - 1, 0));
+          break;
+        case 'Enter':
+        case 'Tab':
+          e.preventDefault();
+          if (suggestedFunctions.length > 0) {
+            selectSuggestion(suggestedFunctions[selectedSuggestionIndex], row, col);
+          }
+          break;
+        case 'Escape':
+          setShowFormulaSuggestions(false);
+          break;
+      }
+    }
   };
 
-  const handleFontChange = (font) => {
-    setFontFamily(font);
+  const selectSuggestion = (fnName, row, col) => {
+    const currentValue = data[row][col];
+    const newValue = `=${fnName}(${currentValue.slice(1 + formulaPrefix.length)})`;
+    
+    handleChange(row, col, newValue);
+    setShowFormulaSuggestions(false);
+    
+    setTimeout(() => {
+      const input = document.querySelector(`input[data-row="${row}"][data-col="${col}"]`);
+      if (input) {
+        input.focus();
+        input.setSelectionRange(fnName.length + 2, fnName.length + 2);
+      }
+    }, 0);
   };
 
-  const handleFontSizeChange = (size) => {
-    setFontSize(size);
-  };
+  useEffect(() => {
+    if (formulaPrefix) {
+      const filtered = allFunctions.filter(fn =>
+        fn.startsWith(formulaPrefix.toUpperCase())
+      ).sort();
+      setSuggestedFunctions(filtered);
+    }
+  }, [formulaPrefix]);
 
-  const handleZoom = (zoomPercentage) => {
-    setZoomLevel(zoomPercentage);
-  };
-
+  // Existing spreadsheet logic
   const getColumnName = (index) => String.fromCharCode(65 + index);
 
-  // Cell Selection and Drag Logic
   const handleMouseDown = (row, col) => {
     setDragStart({ row, col });
     setSelectedCells([{ row, col }]);
@@ -108,23 +193,7 @@ const ExcelClone = () => {
   const isSelected = (row, col) =>
     selectedCells.some((cell) => cell.row === row && cell.col === col);
 
-  // Formula Calculation Logic with Formula.js
-  const getCellValue = (cellRef) => {
-    const match = cellRef.match(/([A-Z])(\d+)/);
-    if (!match) return null;
-
-    const col = match[1].charCodeAt(0) - 65;
-    const row = parseInt(match[2]) - 1;
-
-    if (row < 0 || row >= ROWS || col < 0 || col >= COLS) {
-      return null;
-    }
-
-    return parseFloat(data[row][col]) || 0;
-  };
-
-
-  // Enhanced formula handling
+  // Formula calculation logic
   const processRange = (range) => {
     const [start, end] = range.split(':');
     const startMatch = start.match(/([A-Z]+)(\d+)/i);
@@ -249,7 +318,6 @@ const ExcelClone = () => {
     }
   };
 
-  // Enhanced cell value calculation with circular reference check
   const calculateCellValue = useCallback((value, visitedCells = new Set()) => {
     if (!value?.toString().startsWith('=')) return value;
 
@@ -268,111 +336,87 @@ const ExcelClone = () => {
     }
   }, [data, selectedCell]);
 
-  // Rest of the component (keep existing handlers, UI, etc.)
-  // ... (keep all existing handlers, JSX, and other logic)
-
- // Handle Cell Change
- const handleChange = (row, col, value) => {
-  setCellValue(row, col, value);
-
-  const cellKey = `${row}-${col}`;
-  if (calculatedCells.has(cellKey)) {
-    const newCalculatedCells = new Set(calculatedCells);
-    newCalculatedCells.delete(cellKey);
-    setCalculatedCells(newCalculatedCells);
-  }
-};
-
-// Handle Key Down (e.g., Enter key)
-const handleKeyDown = (e, row, col) => {
-  if (e.key === 'Enter') {
-    e.preventDefault();
-    const currentValue = data[row][col];
-    if (currentValue.toString().startsWith('=')) {
-      const result = calculateCellValue(currentValue);
-      handleChange(row, col, result);
-
-      const cellKey = `${row}-${col}`;
-      const newCalculatedCells = new Set(calculatedCells);
-      newCalculatedCells.add(cellKey);
-      setCalculatedCells(newCalculatedCells);
+  // Cell value handlers
+  const handleChange = (row, col, value) => {
+    setCellValue(row, col, value);
+    const cellKey = `${row}-${col}`;
+    if (calculatedCells.has(cellKey)) {
+      setCalculatedCells(new Set([...calculatedCells].filter(k => k !== cellKey)));
     }
-    if (row < ROWS - 1) {
-      setSelectedCell({ row: row + 1, col });
-      const nextInput = document.querySelector(`input[data-row="${row + 1}"][data-col="${col}"]`);
-      if (nextInput) {
-        nextInput.focus();
+  };
+
+  const handleKeyDown = (e, row, col) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      const currentValue = data[row][col];
+      if (currentValue?.toString().startsWith('=')) {
+        const result = calculateCellValue(currentValue);
+        handleChange(row, col, result);
+        setCalculatedCells(new Set([...calculatedCells, `${row}-${col}`]));
+      }
+      if (row < ROWS - 1) {
+        setSelectedCell({ row: row + 1, col });
+        const nextInput = document.querySelector(`input[data-row="${row + 1}"][data-col="${col}"]`);
+        nextInput?.focus();
       }
     }
-  }
-};
-
-// Data Import/Export Logic
-const exportToCSV = () => {
-  const csvContent = data
-    .map(row => row.map(cell => `"${cell}"`).join(','))
-    .join('\n');
-  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-  const link = document.createElement('a');
-  link.href = URL.createObjectURL(blob);
-  link.download = 'spreadsheet.csv';
-  link.click();
-};
-
-const importCSV = (e) => {
-  const file = e.target.files[0];
-  if (!file) return;
-
-  const reader = new FileReader();
-  reader.onload = (event) => {
-    const csvText = event.target.result;
-    const rows = csvText.split('\n').map(row =>
-      row.split(',').map(cell => cell.replace(/^"|"$/g, ''))
-    );
-
-    const newROWS = rows.length;
-    const newCOLS = Math.max(...rows.map(row => row.length));
-
-    importData(rows);
-    setCalculatedCells(new Set());
   };
-  reader.readAsText(file);
-};
 
-// Graphing Logic
-const handleDataSelection = () => {
-  if (selectedCells.length === 0) return;
+  // Data import/export
+  const exportToCSV = () => {
+    const csvContent = data
+      .map(row => row.map(cell => `"${cell}"`).join(','))
+      .join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = 'spreadsheet.csv';
+    link.click();
+  };
 
-  const selectedValues = selectedCells.map(({ row, col }) => ({
-    name: `Row ${row + 1} Col ${getColumnName(col)}`,
-    value: parseFloat(data[row][col]) || 0,
-  }));
+  const importCSV = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
 
-  setSelectedData(selectedValues);
-  setIsGraphModalOpen(true);
-};
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const csvText = event.target.result;
+      const rows = csvText.split('\n').map(row =>
+        row.split(',').map(cell => cell.replace(/^"|"$/g, ''))
+      );
+      importData(rows);
+      setCalculatedCells(new Set());
+    };
+    reader.readAsText(file);
+  };
 
-const exportGraphToPNG = () => {
-  if (!graphRef.current) return;
-  toPng(graphRef.current, { cacheBust: true })
-    .then((dataUrl) => {
-      const link = document.createElement('a');
-      link.download = 'graph.png';
-      link.href = dataUrl;
-      link.click();
-    })
-    .catch((err) => console.error('Failed to export graph:', err));
-};
+  // Charting functionality
+  const handleDataSelection = () => {
+    const selectedValues = selectedCells.map(({ row, col }) => ({
+      name: `Row ${row + 1} Col ${getColumnName(col)}`,
+      value: parseFloat(data[row][col]) || 0,
+    }));
+    setSelectedData(selectedValues);
+    setIsGraphModalOpen(true);
+  };
 
-const renderGraph = () => {
-  if (selectedData.length === 0) {
-    return <div className="text-center text-red-500">No valid numeric data for visualization</div>;
-  }
+  const exportGraphToPNG = () => {
+    toPng(graphRef.current, { cacheBust: true })
+      .then((dataUrl) => {
+        const link = document.createElement('a');
+        link.download = 'graph.png';
+        link.href = dataUrl;
+        link.click();
+      })
+      .catch(console.error);
+  };
 
-  switch (graphType) {
-    case 'bar':
-      return (
-        <div ref={graphRef}>
+  const renderGraph = () => {
+    if (!selectedData.length) return <div className="text-red-500">No data selected</div>;
+
+    switch (graphType) {
+      case 'bar':
+        return (
           <BarChart width={600} height={400} data={selectedData}>
             <CartesianGrid strokeDasharray="3 3" />
             <XAxis dataKey="name" />
@@ -381,31 +425,21 @@ const renderGraph = () => {
             <Legend />
             <Bar dataKey="value" fill="#0088FE" />
           </BarChart>
-        </div>
-      );
-    case 'pie':
-      return (
-        <div ref={graphRef}>
+        );
+      case 'pie':
+        return (
           <RechartsPieChart width={600} height={450}>
-            <Pie
-              data={selectedData}
-              cx={300}
-              cy={200}
-              outerRadius={150}
-              dataKey="value"
-            >
-              {selectedData.map((entry, index) => (
-                <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+            <Pie data={selectedData} cx={300} cy={200} outerRadius={150} dataKey="value">
+              {selectedData.map((_, i) => (
+                <Cell key={i} fill={COLORS[i % COLORS.length]} />
               ))}
             </Pie>
             <Tooltip />
             <Legend />
           </RechartsPieChart>
-        </div>
-      );
-    case 'line':
-      return (
-        <div ref={graphRef}>
+        );
+      case 'line':
+        return (
           <LineChart width={600} height={400} data={selectedData}>
             <CartesianGrid strokeDasharray="3 3" />
             <XAxis dataKey="name" />
@@ -414,114 +448,143 @@ const renderGraph = () => {
             <Legend />
             <Line type="monotone" dataKey="value" stroke="#8884D8" />
           </LineChart>
-        </div>
-      );
-    default:
-      return <div className="text-center text-red-500">Select a valid graph type</div>;
-  }
-};
+        );
+      default:
+        return <div className="text-red-500">Select a graph type</div>;
+    }
+  };
 
-return (
-  <div className="">
-    <header>
-      <Headers
-        handleDataSelection={handleDataSelection}
-        exportToCSV={exportToCSV}
-        fileInputRef={fileInputRef}
-        importCSV={importCSV}
-        setGraphType={setGraphType}
-        onTextFormat={handleTextFormat}
-        onTextAlignment={handleTextAlignment}
-        onFontChange={handleFontChange}
-        onFontSizeChange={handleFontSizeChange}
-        onZoom={handleZoom}
-      />
-    </header>
-
-    {/* Graph Modal */}
-    {isGraphModalOpen && (
-      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-        <div className="bg-white p-6 rounded-lg max-w-4xl w-full relative">
-          <button
-            onClick={() => setIsGraphModalOpen(false)}
-            className="absolute top-2 right-2 text-gray-600 hover:text-gray-900"
+  // Formula suggestions UI
+  const renderFormulaSuggestions = () => (
+    showFormulaSuggestions && (
+      <div 
+        className="absolute z-50 bg-white border border-gray-300 shadow-lg rounded-md max-h-60 overflow-y-auto"
+        style={{ 
+          left: `${dropdownPosition.left}px`,
+          top: `${dropdownPosition.top}px`,
+          minWidth: '300px'
+        }}
+      >
+        {suggestedFunctions.map((fn, i) => (
+          <div
+            key={fn}
+            className={`p-2 hover:bg-blue-50 cursor-pointer ${i === selectedSuggestionIndex ? '' : ''}`}
+            onClick={() => selectSuggestion(fn, selectedCell.row, selectedCell.col)}
           >
-            ×
-          </button>
-          <h2 className="text-xl font-bold mb-4">Create Visualization</h2>
-          {renderGraph()}
-          <div className="flex justify-center mt-4">
+            <div className="font-mono text-blue-600">{fn}</div>
+            <div className="text-gray-500 text-sm">
+              {FUNCTION_SIGNATURES[fn] || 'Custom function'}
+            </div>
+          </div>
+        ))}
+      </div>
+    )
+  );
+
+  return (
+    <div className="relative">
+      {renderFormulaSuggestions()}
+      
+      <header>
+        <Headers
+          handleDataSelection={handleDataSelection}
+          exportToCSV={exportToCSV}
+          fileInputRef={fileInputRef}
+          importCSV={importCSV}
+          setGraphType={setGraphType}
+          onTextFormat={(format) => setTextFormat(prev => ({ ...prev, [format]: !prev[format] }))}
+          onTextAlignment={setTextAlignment}
+          onFontChange={setFontFamily}
+          onFontSizeChange={setFontSize}
+          onZoom={setZoomLevel}
+          textFormat={textFormat}
+          currentAlignment={textAlignment}
+          currentFont={fontFamily}
+          currentFontSize={fontSize}
+          zoomLevel={zoomLevel}
+        />
+      </header>
+
+      {isGraphModalOpen && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white p-6 rounded-lg max-w-4xl w-full relative">
             <button
-              onClick={exportGraphToPNG}
-              className="flex items-center gap-2 px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
+              onClick={() => setIsGraphModalOpen(false)}
+              className="absolute top-2 right-2 text-gray-600 hover:text-gray-900"
             >
-              <Download size={16} />
-              Export Graph
+              ×
             </button>
+            <h2 className="text-xl font-bold mb-4">Data Visualization</h2>
+            <div ref={graphRef}>{renderGraph()}</div>
+            <div className="flex justify-center mt-4">
+              <button
+                onClick={exportGraphToPNG}
+                className="flex items-center gap-2 px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
+              >
+                <Download size={16} />
+                Export Graph
+              </button>
+            </div>
           </div>
         </div>
-      </div>
-    )}
+      )}
 
-    {/* Spreadsheet Table */}
-    <div className="table-container" onMouseUp={handleMouseUp}>
-      <table className="min-w-full divide-y divide-gray-200">
-        <thead>
-          <tr>
-            <th className="w-12 bg-gray-200"></th>
-            {Array(COLS).fill().map((_, i) => (
-              <th key={i} className="bg-gray-200 px-2 py-1 text-center">
-                {getColumnName(i)}
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {Array(ROWS).fill().map((_, rowIndex) => (
-            <tr key={rowIndex}>
-              <td className="bg-gray-100 border-black text-center border-r">{rowIndex + 1}</td>
-              {Array(COLS).fill().map((_, colIndex) => {
-                const isSelectedRange = isSelected(rowIndex, colIndex);
-                return (
-                  <td
-                    key={colIndex}
-                    className={`border relative ${
-                      isSelectedRange ? `border-[3px] border-black` : 'border-black'
-                    }`}
-                    onMouseDown={() => handleMouseDown(rowIndex, colIndex)}
-                    onMouseOver={() => handleMouseOver(rowIndex, colIndex)}
-                  >
-                    <input
-                      type="text"
-                      value={data[rowIndex][colIndex] || ''}
-                      onChange={(e) => handleChange(rowIndex, colIndex, e.target.value)}
-                      onKeyDown={(e) => handleKeyDown(e, rowIndex, colIndex)}
-                      className={`w-full px-2 py-1 focus:outline-none ${
-                        textFormat.bold ? 'font-bold' : ''
-                      } ${
-                        textFormat.italic ? 'italic' : ''
-                      } ${
-                        textFormat.underline ? 'underline' : ''
-                      }`}
-                      style={{
-                        textAlign: textAlignment,
-                        fontSize: `${fontSize}px`,
-                        fontFamily: fontFamily,
-                        transform: `scale(${zoomLevel / 100})`,
-                        transformOrigin: 'center center'
-                      }}
-                      placeholder=""
-                    />
-                  </td>
-                );
-              })}
+      <div className="overflow-auto" onMouseUp={handleMouseUp}>
+        <table className="border-collapse" style={{ transform: `scale(${zoomLevel/100})`, transformOrigin: '0 0' }}>
+          <thead>
+            <tr>
+              <th className="w-12 bg-gray-200 border-black border-2"></th>
+              {Array(COLS).fill().map((_, i) => (
+                <th key={i} className="bg-gray-200 px-2 py-1 border-2 border-black text-center">
+                  {getColumnName(i)}
+                </th>
+              ))}
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {Array(ROWS).fill().map((_, row) => (
+              <tr key={row}>
+                <td className="bg-gray-100 text-center border-2 border-r-black border-b-black">{row + 1}</td>
+                {Array(COLS).fill().map((_, col) => {
+                  const isSelectedCell = isSelected(row, col);
+                  return (
+                    <td
+                      key={col}
+                      className={`border relative ${isSelectedCell ? 'border-4 border-black' : 'border-black'}`}
+                      onMouseDown={() => handleMouseDown(row, col)}
+                      onMouseOver={() => handleMouseOver(row, col)}
+                    >
+                      <input
+                        type="text"
+                        value={data[row][col] || ''}
+                        onChange={(e) => handleFormulaInput(e, row, col)}
+                        onKeyDown={(e) => {
+                          handleKeyDown(e, row, col);
+                          handleFormulaKeyDown(e, row, col);
+                        }}
+                        className={`w-full h-full px-2  focus:outline-none ${textFormat.bold ? 'font-bold' : ''} ${textFormat.italic ? 'italic' : ''} ${textFormat.underline ? 'underline' : ''}`}
+                        style={{
+                          textAlign: textAlignment,
+                          fontSize: `${fontSize}px`,
+                          fontFamily: fontFamily,
+                          backgroundColor: isSelectedCell ? '' : 'white'
+                        }}
+                        data-row={row}
+                        data-col={col}
+                        ref={el => {
+                          if (isSelectedCell) activeInputRef.current = el;
+                        }}
+                      />
+                    </td>
+                  );
+                })}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
-  </div>
-);
+  );
 };
 
 export default ExcelClone;

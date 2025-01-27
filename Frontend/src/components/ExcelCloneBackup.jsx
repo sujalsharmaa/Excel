@@ -155,16 +155,18 @@ const ExcelClone = () => {
   const evaluateFormula = (formula, data) => {
     try {
       let evaluatedFormula = formula
-        .replace(/([A-Z]+\d+):([A-Z]+\d+)/gi, (match, start, end) => {
-          const values = processRange(`${start}:${end}`);
-          return JSON.stringify(values);
-        })
-        .replace(/([A-Z]+)(\d+)/gi, (match, col, row) => {
-          const colIndex = col.toUpperCase().charCodeAt(0) - 65;
-          const rowIndex = parseInt(row) - 1;
-          const value = data[rowIndex]?.[colIndex];
-          return isNaN(value) ? `"${value}"` : value;
-        });
+      .replace(/\bTRUE\b/gi, 'true')
+      .replace(/\bFALSE\b/gi, 'false')
+      .replace(/([A-Z]+\d+):([A-Z]+\d+)/gi, (match, start, end) => {
+        const values = processRange(`${start}:${end}`);
+        return JSON.stringify(values);
+      })
+      .replace(/([A-Z]+)(\d+)/gi, (match, col, row) => {
+        const colIndex = col.toUpperCase().charCodeAt(0) - 65;
+        const rowIndex = parseInt(row) - 1;
+        const value = data[rowIndex]?.[colIndex] || 0;
+        return isNaN(value) ? `"${value}"` : value;
+      });
 
       // Extract formula.js functions
       const {
