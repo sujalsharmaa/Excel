@@ -33,6 +33,7 @@ export const RegisterFlow = async (accessToken, refreshToken, profile, done) => 
 
     // Create and upload a new file
     const fileName = `file_${Date.now()}_${googleId}.csv`;
+    const fileNameForUser = `file_${Date.now()}_${googleId}.csv`;
     const filePath = `./${fileName}`;
     const rows = 10;
     const cols = 100;
@@ -49,7 +50,8 @@ export const RegisterFlow = async (accessToken, refreshToken, profile, done) => 
               fileName,
               filePath
             );
-            await insertFileRecord(googleId, fileName, fileUrl);
+            const email = profile.emails[0].value
+            await insertFileRecord(googleId, fileName, fileUrl,fileNameForUser,email);
             
             // Call done only once
             done(null,  googleId);

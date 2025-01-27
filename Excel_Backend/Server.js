@@ -17,6 +17,8 @@ import { redisCache } from "./Cache/RedisConfig.js";
 dotenv.config();
 
 
+export var fileNamingMaps = new Map()
+
 
 const app = express();
 
@@ -150,6 +152,7 @@ const PORT = process.env.PORT || 3000;
 const startServer = async () => {
   try {
     console.log('Setting up database tables...');
+    console.log(fileNamingMaps)
     await createTable()
     console.log('Database tables are ready!');
     

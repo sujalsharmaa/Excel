@@ -6,10 +6,10 @@ export const getUserByGoogleId = async (googleId) => {
   return result.rows[0];
 };
 
-export const insertFileRecord = async (googleId, fileName, location) => {
+export const insertFileRecord = async (googleId, fileName, location,fileNameForUser,email) => {
   await User.query(
-    `INSERT INTO project_files(google_id, file_name, location, is_admin, read_permission, write_permission)
-     VALUES ($1, $2, $3, $4, $5, $6)`,
-    [googleId, fileName, location, true, true, true]
+    `INSERT INTO project_files(google_id, file_name,file_name_user, location, is_admin, read_permission, write_permission,email)
+     VALUES ($1, $2, $3, $4, $5, $6, $7,$8)`,
+    [googleId, fileName,fileNameForUser, location, true, true, true,email]
   );
 };

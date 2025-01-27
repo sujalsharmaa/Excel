@@ -11,6 +11,7 @@ import { AuthGuard } from './AuthGuard.jsx';
 import NewFileButton from './NewFileButton.jsx';
 import { useSpreadsheetStore } from '../Store/useStore.js';
 import { useNavigate } from 'react-router-dom';
+
 const fonts = [
   "Roboto",
   "Open Sans",
@@ -119,6 +120,7 @@ function Headers(props) {
   const { isAuthenticated } = useAuthStore();
   const { resetData } = useSpreadsheetStore();
   const navigate = useNavigate();
+  const {fileUserName} = useAuthStore(); 
   const {
     handleDataSelection,
     exportToCSV,
@@ -181,7 +183,7 @@ function Headers(props) {
             </div>
           </div>
           <div className="text-sm text-gray-300 ml-2">
-            Current File: <span className="font-mono">file125135</span>
+            Current File: <span className="font-mono">{<AuthGuard children={fileUserName} />}</span>
           </div>
         </div>
 

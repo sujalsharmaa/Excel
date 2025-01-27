@@ -15,6 +15,8 @@ export const useAuthStore = create(
       isLoading: false,
       error: null,
       fileUrl: null, // Add fileUrl to the state
+      fileUserName: null,
+      setfileUserName: (name) => set({ fileUserName: name }),
       setfileUrl: (url) => set({ fileUrl: url }),
 
       login: async () => {
@@ -204,25 +206,29 @@ export const useSpreadsheetStore = create(
       },
       LoadFile: async (FileLink, navigate) => {
         const {initializeWebSocket} = useWebSocketStore.getState();
-        const {setfileUrl,fileUrl} = useAuthStore.getState();
+        const {setfileUrl,fileUrl,setfileUserName,fileUserName} = useAuthStore.getState();
         if(fileUrl){
           setfileUrl( FileLink );
           await initializeWebSocket();
-        }
-        
+        }   
          //state change
-
-
         try {
           const { importData } = useSpreadsheetStore.getState();
             const response = await axios.get(
                 `${import.meta.env.VITE_PUBLIC_API_URL}/file/${FileLink}`,
                 { withCredentials: true, responseType: 'text' }
             );
+            const name = await axios.get(
+              `${import.meta.env.VITE_PUBLIC_API_URL}/file/${FileLink}/name`,
+              { withCredentials: true, responseType: 'text' }
+          );
             //console.log(FileLink)
     
-            
-            const csvText = response.data;
+            const myfilename = JSON.parse(name.data) 
+            setfileUserName(myfilename.fileNameForUser)
+            console.log("setting name",myfilename.fileNameForUser)
+            const csvText = response.data
+            console.log("name=>",name)
     
             if (!csvText) {
                 throw new Error('No data received from the server');
@@ -237,6 +243,14 @@ export const useSpreadsheetStore = create(
             console.error('Error loading file:', error);
             navigate('/error'); // Redirect to an error page
         }
+    },
+    LoadAdminData: async() =>{
+      const res = await axios.get(`${import.meta.env.VITE_PUBLIC_API_URL}/admin`,
+        {withCredentials:true}
+      )
+      console.log("data => ",res)
+      return res
+      
     }
     
     }),

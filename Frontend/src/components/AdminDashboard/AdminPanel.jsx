@@ -9,8 +9,12 @@ import {
 } from "@tanstack/react-table";
 import { Dialog } from "@headlessui/react";
 import { Search, ChevronLeft, ChevronRight, Copy, X, Edit, Save, Trash } from "react-feather";
+import { useSpreadsheetStore } from "../../Store/useStore.js";
+
 
 const AdminPanel = () => {
+    const {LoadAdminData} = useSpreadsheetStore()
+    LoadAdminData()
     const [editingRowId, setEditingRowId] = useState(null);
     const [newFileName, setNewFileName] = useState("");
   const [data, setData] = useState([
