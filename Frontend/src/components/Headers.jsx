@@ -4,8 +4,10 @@ import {
   FileKey, FileText, ZoomOut, ZoomIn, Bold, Italic, Underline, 
   AlignLeft, AlignCenter, AlignRight, AlignJustify, BookOpen, FileCog,
   Download, Table, Upload, BarChart2, PieChart, LineChart as LineChartIcon,
-  LogIn, FileX2, Menu, Type, Plus, Sliders
+  LogIn, FileX2, Menu, Type, Plus, Sliders,CornerDownLeft, ArrowRightToLine 
 } from 'lucide-react';
+
+
 import { useAuthStore } from '../Store/useStore.js';
 import { AuthGuard } from './AuthGuard.jsx';
 import NewFileButton from './NewFileButton.jsx';
@@ -115,6 +117,27 @@ const fonts = [
   "Chewy",
   "Fredoka One"
 ];
+
+
+const applyKeyAction = (keyType) => {
+  const activeElement = document.activeElement;
+
+  if (activeElement && activeElement.tagName === 'TEXTAREA') {
+    const cursorPosition = activeElement.selectionStart;
+    const value = activeElement.value;
+
+    if (keyType === 'enter') {
+      activeElement.value =
+        value.slice(0, cursorPosition) + '\n' + value.slice(cursorPosition);
+    } else if (keyType === 'tab') {
+      activeElement.value =
+        value.slice(0, cursorPosition) + '\t' + value.slice(cursorPosition);
+    }
+    activeElement.selectionStart = activeElement.selectionEnd = cursorPosition + 1;
+  }
+};
+
+
 
 function Headers(props) {
   const { isAuthenticated } = useAuthStore();
@@ -313,6 +336,25 @@ function Headers(props) {
             ))}
           </div>
         </div>
+      </div>
+            {/* Adding Enter and Tab buttons */}
+            <div className="flex items-center gap-4">
+        {/* <div className="flex items-center gap-1 bg-gray-800 rounded-lg p-1">
+          <button
+            onClick={() => applyKeyAction('enter')}
+            className="p-2 hover:bg-gray-700 rounded-md"
+            title="Enter Key"
+          >
+            <CornerDownLeft size={16} />
+          </button>
+          <button
+            onClick={() => applyKeyAction('tab')}
+            className="p-2 hover:bg-gray-700 rounded-md"
+            title="Tab Key"
+          >
+            <ArrowRightToLine size={16} />
+          </button>
+        </div> */}
       </div>
     </header>
   );

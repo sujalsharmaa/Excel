@@ -3,6 +3,7 @@ import ExcelClone from './components/ExcelClone';
 import { FileViewer } from './components/FileViewer';
 import {NotFound} from "./components/NotFound"
 import AdminPanel from './components/AdminDashboard/AdminPanel';
+import PermissionDenied from './components/PermissionDenied';
 
 export default function App() {
   return (
@@ -13,6 +14,7 @@ export default function App() {
         <Route path="*" element={<NotFound/>} /> {/* Catch-all route for 404 pages */}
         {/* <Route path='/docs' element={<Docs/>} />  */}
         <Route path="/admin" element={<AdminPanel />} />
+        <Route path="/permission_denied" element={<PermissionDenied/>} />
       </Routes>
     </Router>
   );

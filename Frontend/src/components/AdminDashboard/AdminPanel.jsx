@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from "react";
+import { useState, useMemo,useEffect, useCallback } from "react";
 import {
   flexRender,
   getCoreRowModel,
@@ -8,37 +8,70 @@ import {
   useReactTable,
 } from "@tanstack/react-table";
 import { Dialog } from "@headlessui/react";
+
+
+
 import { Search, ChevronLeft, ChevronRight, Copy, X, Edit, Save, Trash } from "react-feather";
 import { useSpreadsheetStore } from "../../Store/useStore.js";
+import { useAuthStore } from "../../Store/useStore.js";
 
 
 const AdminPanel = () => {
-    const {LoadAdminData} = useSpreadsheetStore()
-    LoadAdminData()
+    const {isLoading,setIsLoading} = useAuthStore()
+    const {LoadAdminData,UpdateUserPermission,AddEmailToFile} = useSpreadsheetStore()
     const [editingRowId, setEditingRowId] = useState(null);
     const [newFileName, setNewFileName] = useState("");
-  const [data, setData] = useState([
-    {
-      fileName: "File 1.xlsx",
-      authorizedEmails: ["user1@example.com", "user2@example.com"],
-      permissions: ["Read", "Read + Write"],
-      lastModified: "2025-01-20T14:32:00Z",
-      token: { value: "", expiresAt: null },
-    },
-    {
-      fileName: "File 2.xlsx",
-      authorizedEmails: ["user3@example.com", "user4@example.com", "user5@example.com"],
-      permissions: ["Read", "Read", "Read + Write"],
-      lastModified: "2025-01-25T08:12:00Z",
-      token: { value: "", expiresAt: null },
-    },
-  ]);
+const [data,setData] = useState([]);
 
   const [globalFilter, setGlobalFilter] = useState("");
   const [isShareOpen, setIsShareOpen] = useState(false);
   const [shareEmail, setShareEmail] = useState("");
   const [selectedFileIndex, setSelectedFileIndex] = useState(-1);
   const [tokenExpiryTimes, setTokenExpiryTimes] = useState({});
+
+
+  
+
+  useEffect(() => {
+    const loadAdminData = async () => {
+      try {
+        setIsLoading(true)
+        const backendData = await LoadAdminData();
+        const transformedData = transformBackendData(backendData);
+        console.log("tfdata",backendData)
+        setData(transformedData);
+      } catch (err) {
+        console.log(err.message);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    loadAdminData();
+  }, []);
+
+  const transformBackendData = (backendData) => {
+    if (!backendData || typeof backendData !== "object") return [];
+    return Object.keys(backendData).map((fileName) => {
+      const users = Array.isArray(backendData[fileName]) ? backendData[fileName] : [backendData[fileName]];
+      const emailsArray = users[0].permissions
+      return {
+        fileName: users.map(user => user.file_name_user),
+        authorizedEmails: emailsArray.map(user => user.email),
+        permissions: users.map(user => user.read_permission && user.write_permission ? "Read + Write" : "Reads"),
+        lastModified: users.reduce((latest, user) => {
+          const current = new Date(user.modified_at);
+          return current > latest ? current : latest;
+        }, new Date(0)).toISOString(),
+        token: { value: "", expiresAt: null }
+      };
+    });
+  };
+  
+
+  //if (isLoading) return <div>Loading...</div>;
+  // if (error) return <div>Error: {error}</div>;
+
+  
 
   const handleRenameFile = useCallback((fileIndex, newName) => {
     setData(prevData => {
@@ -52,9 +85,9 @@ const AdminPanel = () => {
     });
   }, []);
 
-  const AddEmailCell = ({ row, handleAddEmail }) => {
+  const AddEmailCell = ({ handleAddEmail }) => {
     const [localEmail, setLocalEmail] = useState("");
-
+  
     return (
       <div className="flex gap-2">
         <input
@@ -67,7 +100,7 @@ const AdminPanel = () => {
         <button
           onClick={() => {
             if (localEmail) {
-              handleAddEmail(row.index, localEmail);
+              handleAddEmail(localEmail);
               setLocalEmail("");
             }
           }}
@@ -91,22 +124,29 @@ const AdminPanel = () => {
     return new Date(now.getTime() + amount * multiplier);
   };
 
-  const handlePermissionChange = useCallback((fileIndex, userIndex, newPermission) => {
-    setData(prevData => {
-      const newData = [...prevData];
-      newData[fileIndex].permissions[userIndex] = newPermission;
-      return newData;
-    });
-  }, []);
+  const handlePermissionChange = useCallback(async (fileName, email, newPermission) => {
+    try {
+      const newData = await UpdateUserPermission(
+        fileName, 
+        email,
+        newPermission
+      );
+      setData(transformBackendData(newData));
+    } catch (error) {
+      console.error('Failed to update permission:', error);
+      // Consider adding error state/notification
+    }
+  }, [UpdateUserPermission]);
 
-  const handleAddEmail = useCallback((fileIndex, email) => {
-    setData(prevData => {
-      const newData = [...prevData];
-      newData[fileIndex].authorizedEmails.push(email);
-      newData[fileIndex].permissions.push("Read");
-      return newData;
-    });
-  }, []);
+  const handleAddEmail = useCallback(async (fileName, email) => {
+    try {
+      const newData = await AddEmailToFile(fileName, email, 'Read');
+      setData(transformBackendData(newData));
+    } catch (error) {
+      console.error('Failed to add email:', error);
+      // Consider adding error state/notification
+    }
+  }, [AddEmailToFile]);
 
   const handleGenerateToken = useCallback((fileIndex) => {
     const expiryTime = tokenExpiryTimes[fileIndex] || "10m";
@@ -182,7 +222,7 @@ const AdminPanel = () => {
         header: "Authorized Emails",
         cell: ({ row }) => (
           <ul className="space-y-1">
-            {row.original.authorizedEmails.slice(0, 3).map((email, idx) => (
+            {row.original.authorizedEmails.map((email, idx) => (
               <li key={idx} className="text-sm text-gray-600">
                 {email}
               </li>
@@ -198,7 +238,12 @@ const AdminPanel = () => {
       {
         header: "Add Email",
         cell: ({ row }) => (
-          <AddEmailCell row={row} handleAddEmail={handleAddEmail} />
+                  <AddEmailCell 
+          row={row} 
+          handleAddEmail={(email) => 
+            handleAddEmail(row.original.fileName, email)
+          } 
+        />
         ),
       },
       {
@@ -211,8 +256,14 @@ const AdminPanel = () => {
                 <span className="text-sm text-gray-600">{email}:</span>
                 <select
                   value={row.original.permissions[idx]}
-                  onChange={(e) => handlePermissionChange(row.index, idx, e.target.value)}
-                  className="rounded-lg border-2 border-gray-100 px-2 py-1 text-sm focus:border-purple-400 focus:ring-1 focus:ring-purple-400 transition-colors"
+                  onChange={(e) => 
+                    handlePermissionChange(
+                      row.original.fileName,
+                      email,
+                      e.target.value
+                    )
+                  }
+                  className="rounded-lg border-2 border-black px-2 py-1 text-sm focus:border-purple-400 focus:ring-1 focus:ring-purple-400 transition-colors"
                 >
                   <option value="Read">Read</option>
                   <option value="Read + Write">Read + Write</option>

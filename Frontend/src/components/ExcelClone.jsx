@@ -19,6 +19,7 @@ import {
 import { toPng } from 'html-to-image';
 import * as formulajs from 'formulajs';
 
+
 const COLORS = [
   '#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884D8',
   '#FF5733', '#C70039', '#900C3F', '#DAF7A6', '#FFC300',
@@ -26,6 +27,8 @@ const COLORS = [
   '#E74C3C', '#2ECC71', '#F1C40F', '#7F8C8D', '#34495E',
   '#A569BD', '#D35400', '#BDC3C7', '#27AE60', '#16A085',
 ];
+
+
 
 // Function metadata for suggestions
 const FUNCTION_SIGNATURES = {
@@ -56,6 +59,19 @@ const ExcelClone = () => {
   const [selectedData, setSelectedData] = useState([]);
   const [graphType, setGraphType] = useState(null);
   const [isGraphModalOpen, setIsGraphModalOpen] = useState(false);
+  const [editingCell, setEditingCell] = useState(null);
+
+  
+useEffect(() => {
+  if (editingCell) {
+    const input = document.querySelector(
+      `input[data-row="${editingCell.row}"][data-col="${editingCell.col}"]`
+    );
+    input?.focus();
+    input?.select();
+  }
+}, [editingCell]);
+
   const graphRef = useRef(null);
   const fileInputRef = useRef(null);
   const [textFormat, setTextFormat] = useState({
@@ -75,7 +91,96 @@ const ExcelClone = () => {
   const [selectedSuggestionIndex, setSelectedSuggestionIndex] = useState(0);
   const [dropdownPosition, setDropdownPosition] = useState({ left: 0, top: 0 });
   const activeInputRef = useRef(null);
+  const [isDraggingHandle, setIsDraggingHandle] = useState(false);
+  const [touchStartCell, setTouchStartCell] = useState(null);
 
+  const getLastSelectedCell = () => {
+    if (!selectedCells.length) return null;
+    return selectedCells.reduce((last, current) => {
+      if (current.row >= last.row && current.col >= last.col) {
+        return current;
+      }
+      return last;
+    });
+  };
+
+  // Function to get the first selected cell (top-left)
+  const getFirstSelectedCell = () => {
+    if (!selectedCells.length) return null;
+    return selectedCells.reduce((first, current) => {
+      if (current.row <= first.row && current.col <= first.col) {
+        return current;
+      }
+      return first;
+    });
+  };
+
+  // Handle touch events for drag handle
+  const handleTouchStart = (e) => {
+    e.preventDefault();
+    const touch = e.touches[0];
+    setIsDraggingHandle(true);
+    setTouchStartCell(selectedCell);
+  };
+
+  const handleTouchMove = (e) => {
+    if (!isDraggingHandle) return;
+    
+    const touch = e.touches[0];
+    const element = document.elementFromPoint(touch.clientX, touch.clientY);
+    
+    if (element?.tagName === 'INPUT') {
+      const row = parseInt(element.dataset.row);
+      const col = parseInt(element.dataset.col);
+      
+      if (!isNaN(row) && !isNaN(col)) {
+        const startCell = touchStartCell || selectedCell;
+        
+        // Calculate selection area
+        const startRow = Math.min(startCell.row, row);
+        const endRow = Math.max(startCell.row, row);
+        const startCol = Math.min(startCell.col, col);
+        const endCol = Math.max(startCell.col, col);
+
+        // Create new selection
+        const newSelection = [];
+        for (let r = startRow; r <= endRow; r++) {
+          for (let c = startCol; c <= endCol; c++) {
+            newSelection.push({ row: r, col: c });
+          }
+        }
+        setSelectedCells(newSelection);
+      }
+    }
+  };
+
+  const handleTouchEnd = () => {
+    setIsDraggingHandle(false);
+    setTouchStartCell(null);
+  };
+
+  // Add touch event listeners
+  useEffect(() => {
+    const handleGlobalTouchMove = (e) => {
+      if (isDraggingHandle) {
+        handleTouchMove(e);
+      }
+    };
+
+    const handleGlobalTouchEnd = () => {
+      if (isDraggingHandle) {
+        handleTouchEnd();
+      }
+    };
+
+    document.addEventListener('touchmove', handleGlobalTouchMove, { passive: false });
+    document.addEventListener('touchend', handleGlobalTouchEnd);
+
+    return () => {
+      document.removeEventListener('touchmove', handleGlobalTouchMove);
+      document.removeEventListener('touchend', handleGlobalTouchEnd);
+    };
+  }, [isDraggingHandle, touchStartCell]);
   // Combined function list
   const allFunctions = [
     ...Object.keys(formulajs).filter(k => typeof formulajs[k] === 'function'),
@@ -354,6 +459,8 @@ const ExcelClone = () => {
         handleChange(row, col, result);
         setCalculatedCells(new Set([...calculatedCells, `${row}-${col}`]));
       }
+      setEditingCell(null);
+      setShowFormulaSuggestions(false); // Add this line
       if (row < ROWS - 1) {
         setSelectedCell({ row: row + 1, col });
         const nextInput = document.querySelector(`input[data-row="${row + 1}"][data-col="${col}"]`);
@@ -529,6 +636,8 @@ const ExcelClone = () => {
         </div>
       )}
 
+      
+
       <div className="overflow-auto" onMouseUp={handleMouseUp}>
         <table className="border-collapse" style={{ transform: `scale(${zoomLevel/100})`, transformOrigin: '0 0' }}>
           <thead>
@@ -544,30 +653,47 @@ const ExcelClone = () => {
           <tbody>
             {Array(ROWS).fill().map((_, row) => (
               <tr key={row}>
-                <td className="bg-gray-100 text-center border-2 border-r-black border-b-black">{row + 1}</td>
+                <td className="bg-gray-100 text-center border-2 border-r-black border-b-black">
+                  {row + 1}
+                </td>
                 {Array(COLS).fill().map((_, col) => {
                   const isSelectedCell = isSelected(row, col);
+                  const lastSelectedCell = getLastSelectedCell();
+                  const showDragHandle = lastSelectedCell?.row === row && lastSelectedCell?.col === col;
+                  
                   return (
                     <td
                       key={col}
-                      className={`border relative ${isSelectedCell ? 'border-4 border-black' : 'border-black'}`}
+                      className={`border relative ${
+                        isSelectedCell ? 'border-2 border-black bg-[#7CB9E8]' : 'border-black'
+                      }`}
                       onMouseDown={() => handleMouseDown(row, col)}
                       onMouseOver={() => handleMouseOver(row, col)}
+                      onDoubleClick={() => setEditingCell({ row, col })}
                     >
                       <input
                         type="text"
                         value={data[row][col] || ''}
+                        readOnly={!(editingCell?.row === row && editingCell?.col === col)}
                         onChange={(e) => handleFormulaInput(e, row, col)}
+                        onBlur={() => {
+                          setEditingCell(null);
+                          setShowFormulaSuggestions(false);
+                        }}
                         onKeyDown={(e) => {
                           handleKeyDown(e, row, col);
                           handleFormulaKeyDown(e, row, col);
                         }}
-                        className={`w-full h-full px-2  focus:outline-none ${textFormat.bold ? 'font-bold' : ''} ${textFormat.italic ? 'italic' : ''} ${textFormat.underline ? 'underline' : ''}`}
+                        className={`w-full h-full px-2 focus:outline-none ${
+                          textFormat.bold ? 'font-bold' : ''
+                        } ${textFormat.italic ? 'italic' : ''} ${
+                          textFormat.underline ? 'underline' : ''
+                        }`}
                         style={{
                           textAlign: textAlignment,
                           fontSize: `${fontSize}px`,
                           fontFamily: fontFamily,
-                          backgroundColor: isSelectedCell ? '' : 'white'
+                          backgroundColor: isSelectedCell ? '#7CB9E8' : 'white'
                         }}
                         data-row={row}
                         data-col={col}
@@ -575,6 +701,16 @@ const ExcelClone = () => {
                           if (isSelectedCell) activeInputRef.current = el;
                         }}
                       />
+                      {showDragHandle && (
+                        <div
+                          className="absolute bottom-0 right-0 w-3 h-3 bg-blue-600 rounded-full cursor-se-resize touch-none"
+                          onTouchStart={handleTouchStart}
+                          style={{
+                            transform: 'translate(50%, 50%)',
+                            zIndex: 10
+                          }}
+                        />
+                      )}
                     </td>
                   );
                 })}

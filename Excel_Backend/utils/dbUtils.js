@@ -8,8 +8,13 @@ export const getUserByGoogleId = async (googleId) => {
 
 export const insertFileRecord = async (googleId, fileName, location,fileNameForUser,email) => {
   await User.query(
-    `INSERT INTO project_files(google_id, file_name,file_name_user, location, is_admin, read_permission, write_permission,email)
-     VALUES ($1, $2, $3, $4, $5, $6, $7,$8)`,
-    [googleId, fileName,fileNameForUser, location, true, true, true,email]
+    `INSERT INTO project_files(google_id, file_id,file_name_user, location,email)
+     VALUES ($1, $2, $3, $4, $5)`,
+    [googleId, fileName,fileNameForUser, location,email]
+  );
+  await User.query(
+    `INSERT INTO file_permissions(user_id, file_id,email,read_permission,write_permission,is_admin)
+     VALUES ($1, $2, $3, $4, $5, $6)`,
+    [googleId, fileName,email,true,true,true]
   );
 };

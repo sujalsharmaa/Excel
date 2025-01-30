@@ -1,7 +1,9 @@
 import { User } from "./Db_config.js";
 
 export const dropTable = async () => {
-    const query = `DROP table project_files;
+    const query = `
+    DROP table file_permissions;
+    DROP table project_files;
     DROP table users;
     `;
 

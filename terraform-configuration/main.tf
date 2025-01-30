@@ -212,7 +212,7 @@ resource "aws_instance" "kafka-postgres-redis" {
 }
 
 resource "aws_s3_bucket" "sujal910992" {
-    bucket = "sujal91099"
+    bucket = "sujal910992"
     # acl = "public-read-write"
   
 }

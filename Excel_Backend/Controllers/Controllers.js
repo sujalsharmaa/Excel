@@ -12,7 +12,7 @@ export const RegisterFlow = async (accessToken, refreshToken, profile, done) => 
     // Check if user exists and has a file
     if (user) {
       const fileResult = await User.query(
-        `SELECT file_name FROM project_files WHERE google_id = $1 ORDER BY modified_at DESC LIMIT 1`,
+        `SELECT file_id FROM project_files WHERE google_id = $1 ORDER BY modified_at DESC LIMIT 1`,
         [googleId]
       );
 

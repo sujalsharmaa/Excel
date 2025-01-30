@@ -21,6 +21,7 @@ export var fileNamingMaps = new Map()
 
 
 const app = express();
+app.use(express.json()); 
 
 const corsOptions = {
     origin: process.env.FRONTEND_URL,
@@ -114,14 +115,14 @@ app.get('/auth/status', async (req, res) => {
   if (req.user) {
     const googleId = req.user.google_id;
     const fileResult = await User.query(
-      `SELECT file_name FROM project_files WHERE google_id = $1 ORDER BY modified_at DESC LIMIT 1`,
+      `SELECT file_id FROM project_files WHERE google_id = $1 ORDER BY modified_at DESC LIMIT 1`,
       [googleId]
     );
 
     let signedUrl = null;
     if (fileResult.rows.length > 0) {
       // signedUrl = await generateSignedUrl(process.env.S3_BUCKET_NAME, fileResult.rows[0].file_name);
-      signedUrl = fileResult.rows[0].file_name
+      signedUrl = fileResult.rows[0].file_id
     }
 
     res.json({ user: req.user, signedUrl });

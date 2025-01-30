@@ -203,7 +203,6 @@ wss.on('connection', (ws) => {
       const data = JSON.parse(message);
       console.log("userID: ", data.userID, 'fileName: ', data.fileName);
 
-      // Associate the client with the file
       if (data.fileName) {
         if (!fileClients.has(data.fileName)) {
           fileClients.set(data.fileName, new Set());
@@ -217,7 +216,7 @@ wss.on('connection', (ws) => {
 
         // Load the file if it's not already loaded
         if (!localFileVersions.has(data.fileName)) {
-          const response = await User.query("SELECT google_id FROM project_files WHERE file_name = $1", [data.fileName]);
+          const response = await User.query("SELECT google_id FROM project_files WHERE file_id = $1", [data.fileName]);
           if (response.rows.length > 0) {
             const googleId = response.rows[0].google_id;
             userGoogleID.set(data.fileName, googleId);
@@ -234,8 +233,12 @@ wss.on('connection', (ws) => {
 
       // Handle updates from clients
       if (data.type === 'UPDATE') {
-        const { row, col, value, id, fileNameFromUser } = data;
-        console.log(`Received update: row=${row}, col=${col}, value=${value}, id=${id}, fileName=${fileNameFromUser}`);
+        const { row, col, value, id, fileNameFromUser,isWritePermitted } = data;
+        console.log(`Received update: row=${row}, col=${col}, value=${value}, id=${id}, fileName=${fileNameFromUser}, writePermission=${isWritePermitted}`);
+        if(!isWritePermitted){
+          console.log("not permitted to change file content")
+          return
+        }
         if (!isValidCell(row, col)) throw new Error('Invalid cell address');
 
         if (localFileVersions.has(fileNameFromUser)) {

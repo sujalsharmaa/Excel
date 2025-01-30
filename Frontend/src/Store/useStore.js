@@ -13,6 +13,9 @@ export const useAuthStore = create(
       user: null,
       isAuthenticated: false,
       isLoading: false,
+      setIsLoading: (loading) => set({ isLoading: loading }),
+      writePermission: null,
+      setWritePermission: (permission) =>set({writePermission: permission}),
       error: null,
       fileUrl: null, // Add fileUrl to the state
       fileUserName: null,
@@ -187,7 +190,7 @@ export const useSpreadsheetStore = create(
         const { user } = useAuthStore.getState();
         const { sendUpdate } = useWebSocketStore.getState();
         sendUpdate(row, col, value, user?.google_id);
-      }, 1000), // Adjust debounce delay as needed
+      }, 900), // Adjust debounce delay as needed
 
       resetData: () => {
         set({
@@ -222,13 +225,21 @@ export const useSpreadsheetStore = create(
               `${import.meta.env.VITE_PUBLIC_API_URL}/file/${FileLink}/name`,
               { withCredentials: true, responseType: 'text' }
           );
-            //console.log(FileLink)
-    
-            const myfilename = JSON.parse(name.data) 
-            setfileUserName(myfilename.fileNameForUser)
-            console.log("setting name",myfilename.fileNameForUser)
-            const csvText = response.data
-            console.log("name=>",name)
+      
+          const csvText = response.data;
+          //console.log(csvText.permission)
+
+            if (csvText=== "denied") {
+              return navigate('/permission_denied');
+            }
+            
+            const myFilename = JSON.stringify(name.data);
+            setfileUserName(myFilename.fileNameForUser); // Assuming name.data contains a proper filename string
+            console.log("Setting name:", myFilename);
+            
+            
+            //onsole.log("CSV Text:", csvText);
+            
     
             if (!csvText) {
                 throw new Error('No data received from the server');
@@ -248,10 +259,46 @@ export const useSpreadsheetStore = create(
       const res = await axios.get(`${import.meta.env.VITE_PUBLIC_API_URL}/admin`,
         {withCredentials:true}
       )
-      console.log("data => ",res)
-      return res
+      console.log("data => ",res.data.data)
+      return res.data.data
       
-    }
+    },
+    // Add to useSpreadsheetStore
+AddEmailToFile: async (fileName, email, permission) => {
+  try {
+    console.log("email to add =>",email)
+    await axios.post(
+     `${import.meta.env.VITE_PUBLIC_API_URL}/admin/files/${encodeURIComponent(fileName)}/users`,
+      { 
+        email: email,
+        read_permission: permission.includes('Read'),
+        write_permission: permission.includes('Write')
+      },
+      { withCredentials: true }
+    );
+    return await get().LoadAdminData();
+  } catch (error) {
+    console.error('Error adding email:', error.message);
+    throw error;
+  }
+},
+
+UpdateUserPermission: async (fileName, email, permission) => {
+  try {
+    await axios.put(
+      `${import.meta.env.VITE_PUBLIC_API_URL}/admin/files/${fileName}/users/${email}`,
+      { 
+        read_permission: permission.includes('Read'),
+        write_permission: permission.includes('Write')
+      },
+      { withCredentials: true }
+    );
+    return await get().LoadAdminData();
+  } catch (error) {
+    console.error('Error updating permission:', error);
+    throw error;
+  }
+},
     
     }),
     {
@@ -277,8 +324,31 @@ export const useWebSocketStore = create(
       connectionError: null,
       pendingUpdates: [],
 
-      initializeWebSocket: () => {
+      initializeWebSocket: async() => {
         try {
+          const fileUrl = useAuthStore.getState().fileUrl;
+          const {setWritePermission,writePermission} = useAuthStore.getState()
+
+          // Ensure fileUrl is valid before making a request
+          if (!fileUrl) {
+            console.log("file url",fileUrl)
+            console.warn("No file URL found");
+            // return;
+          }
+      
+          // Check write permission before initializing WebSocket
+          const response = await axios.get(
+            `${import.meta.env.VITE_PUBLIC_API_URL}/file/${fileUrl}/writeCheck`,
+            { withCredentials: true, responseType: 'json' }
+          );
+      
+          if (!response.data.permission) {
+            console.warn("User does not have write permission.");
+            // return;
+          }
+          setWritePermission(response.data.permission)
+      
+          // Initialize WebSocket if permission granted
           const ws = new WebSocket(`${import.meta.env.VITE_WS_URL}/ws`);
 
           ws.onopen = () => {
@@ -338,8 +408,8 @@ export const useWebSocketStore = create(
       },
 
       sendUpdate: (row, col, value, id) => {
-        const {fileUrl} = useAuthStore.getState()
-        const update = { type: 'UPDATE', row, col, value, id,fileNameFromUser: fileUrl };
+        const {fileUrl,writePermission} = useAuthStore.getState()
+        const update = { type: 'UPDATE', row, col, value, id,fileNameFromUser: fileUrl,isWritePermitted: writePermission };
         const { socket, isConnected } = get();
 
         if (isConnected && socket) {
