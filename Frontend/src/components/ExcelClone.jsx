@@ -60,6 +60,30 @@ const ExcelClone = () => {
   const [graphType, setGraphType] = useState(null);
   const [isGraphModalOpen, setIsGraphModalOpen] = useState(false);
   const [editingCell, setEditingCell] = useState(null);
+  const undo = useSpreadsheetStore((state) => state.undo);
+  const redo = useSpreadsheetStore((state) => state.redo);
+
+// Add this useEffect for keyboard shortcuts
+useEffect(() => {
+  const handleKeyDown = (e) => {
+    if ((e.ctrlKey || e.metaKey) && e.key === 'z') {
+      e.preventDefault();
+      undo();
+    } else if ((e.ctrlKey || e.metaKey) && e.key === 'y') {
+      e.preventDefault();
+      redo();
+    }
+  };
+
+  // Add event listener
+  document.addEventListener('keydown', handleKeyDown);
+  
+  // Cleanup function to remove listener
+  return () => {
+    document.removeEventListener('keydown', handleKeyDown);
+  };
+}, [undo, redo]); // Add undo and redo as dependencies
+  
 
   
 useEffect(() => {

@@ -4,7 +4,7 @@ import {
   FileKey, FileText, ZoomOut, ZoomIn, Bold, Italic, Underline, 
   AlignLeft, AlignCenter, AlignRight, AlignJustify, BookOpen, FileCog,
   Download, Table, Upload, BarChart2, PieChart, LineChart as LineChartIcon,
-  LogIn, FileX2, Menu, Type, Plus, Sliders,CornerDownLeft, ArrowRightToLine 
+  LogIn, FileX2, Menu, Type, Plus, Sliders,Undo, Redo 
 } from 'lucide-react';
 
 
@@ -140,6 +140,11 @@ const applyKeyAction = (keyType) => {
 
 
 function Headers(props) {
+
+  const undo = useSpreadsheetStore((state) => state.undo);
+  const redo = useSpreadsheetStore((state) => state.redo);
+  const undoStack = useSpreadsheetStore((state) => state.undoStack);
+  const redoStack = useSpreadsheetStore((state) => state.redoStack);
   const { isAuthenticated } = useAuthStore();
   const { resetData } = useSpreadsheetStore();
   const navigate = useNavigate();
@@ -164,6 +169,21 @@ function Headers(props) {
         {/* Left Section - File Operations */}
         <div className="flex items-center gap-3">
           <NewFileButton />
+          <button
+            onClick={undo}
+            disabled={!undoStack.length}
+            className="flex items-center gap-1 px-3 py-1.5 rounded-md hover:bg-gray-800 disabled:opacity-50"
+          >
+            <Undo />
+          </button>
+          <button
+            onClick={redo}
+            disabled={!redoStack.length}
+            className="flex items-center gap-1 px-3 py-1.5 rounded-md hover:bg-gray-800 disabled:opacity-50"
+          >
+
+            <Redo />
+          </button>
           <div className="relative group">
             <button className="flex items-center gap-1 px-3 py-1.5 rounded-md hover:bg-gray-800">
               <Menu size={18} />

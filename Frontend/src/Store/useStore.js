@@ -119,6 +119,8 @@ export const useAuthStore = create(
 export const useSpreadsheetStore = create(
   persist(
     (set, get) => ({
+      undoStack: [],
+      redoStack: [],
       ROWS: 100,
       COLS: 10,
       data: Array(100).fill().map(() => Array(10).fill('')),
@@ -149,7 +151,7 @@ export const useSpreadsheetStore = create(
 
       // Immediately update local state and debounce remote updates
       setCellValue: (row, col, value, isRemoteUpdate = false) => {
-        const { localUpdates } = get();
+        const { localUpdates, data } = get();
       
         // Ensure localUpdates is a Map
         if (!(localUpdates instanceof Map)) {
@@ -165,14 +167,18 @@ export const useSpreadsheetStore = create(
           return;
         }
       
-        const newData = [...get().data];
-        newData[row][col] = value;
+        const prevValue = data[row][col];
+        const newData = data.map((r, i) => 
+          i === row ? [...r.slice(0, col), value, ...r.slice(col + 1)] : r
+        );
+
         set({ data: newData });
       
         if (!isRemoteUpdate) {
-          // Mark cell as being edited locally
-          localUpdates.set(cellKey, Date.now());
-          set({ localUpdates });
+          set((state) => ({
+            undoStack: [...state.undoStack, [{ row, col, prevValue, newValue: value }]],
+            redoStack: [],
+          }));
       
           // Debounce the remote update
           get().debouncedSendUpdate(row, col, value);
@@ -191,6 +197,54 @@ export const useSpreadsheetStore = create(
         const { sendUpdate } = useWebSocketStore.getState();
         sendUpdate(row, col, value, user?.google_id);
       }, 900), // Adjust debounce delay as needed
+
+      undo: () => {
+        const { undoStack, data } = get();
+        if (!undoStack.length) return;
+
+        const lastAction = undoStack[undoStack.length - 1];
+        const newData = data.map(row => [...row]);
+        const redoAction = [];
+
+        lastAction.forEach(({ row, col, prevValue, newValue }) => {
+          newData[row][col] = prevValue;
+          redoAction.push({ row, col, prevValue: newValue, newValue: prevValue });
+        });
+
+        set({
+          data: newData,
+          undoStack: undoStack.slice(0, -1),
+          redoStack: [...get().redoStack, redoAction],
+        });
+
+        lastAction.forEach(({ row, col, prevValue }) => {
+          get().debouncedSendUpdate(row, col, prevValue);
+        });
+      },
+
+      redo: () => {
+        const { redoStack, data } = get();
+        if (!redoStack.length) return;
+
+        const lastRedo = redoStack[redoStack.length - 1];
+        const newData = data.map(row => [...row]);
+        const undoAction = [];
+
+        lastRedo.forEach(({ row, col, prevValue, newValue }) => {
+          newData[row][col] = newValue;
+          undoAction.push({ row, col, prevValue, newValue });
+        });
+
+        set({
+          data: newData,
+          undoStack: [...get().undoStack, undoAction],
+          redoStack: redoStack.slice(0, -1),
+        });
+
+        lastRedo.forEach(({ row, col, newValue }) => {
+          get().debouncedSendUpdate(row, col, newValue);
+        });
+      },
 
       resetData: () => {
         set({
@@ -303,15 +357,16 @@ UpdateUserPermission: async (fileName, email, permission) => {
     }),
     {
       name: 'spreadsheet-storage',
-      // Add a custom merge function to ensure `localUpdates` is always a Map
-      merge: (persistedState, currentState) => {
-        return {
-          ...currentState,
-          ...persistedState,
-          localUpdates: new Map(persistedState.localUpdates || []), // Ensure localUpdates is a Map
+      merge: (persistedState, currentState) => ({
+        ...currentState,
+        ...persistedState,
+        localUpdates: new Map(persistedState.localUpdates || []),
+        undoStack: persistedState.undoStack || [],
+        redoStack: persistedState.redoStack || [],
+      })
         }
-      }
-    }
+      
+    
   )
 );
 
