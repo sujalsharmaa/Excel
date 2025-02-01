@@ -9,7 +9,7 @@ export const LoginButton = () => {
     <button
       onClick={login}
       disabled={isLoading}
-      className="px-4 py-2 bg-blue-500 text-white rounded disabled:opacity-50 mr-2"
+      className="px-4 py-2 bg-pink-600 text-white rounded mr-2"
     >
       {isLoading ? 'Loading...' : 'Login with Google'}
     </button>

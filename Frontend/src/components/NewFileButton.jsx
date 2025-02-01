@@ -1,7 +1,12 @@
 import React, { useState } from 'react';
 import { FileText, Plus, X, User, Lock } from 'lucide-react';
+import { useSpreadsheetStore } from "../Store/useStore.js";
+
 
 const NewFileButton = () => {
+  const { createFile } = useSpreadsheetStore();
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState('');
   const [isOpen, setIsOpen] = useState(false);
   const [fileName, setFileName] = useState('');
   const [users, setUsers] = useState([{ email: '', permission: 'view' }]);
@@ -21,11 +26,31 @@ const NewFileButton = () => {
     setUsers(newUsers);
   };
 
-  const handleSubmit = () => {
-    console.log({ fileName, users });
-    setIsOpen(false);
-    resetForm();
+  const handleSubmit = async () => {
+    try {
+      setIsLoading(true);
+      setError('');
+      
+      if (!fileName.trim()) {
+        throw new Error('File name is required');
+      }
+
+      await createFile(fileName, users);
+      
+      setIsOpen(false);
+      resetForm();
+    } catch (err) {
+      setError(err.message || 'Failed to create file');
+    } finally {
+      setIsLoading(false);
+    }
   };
+
+  {error && (
+    <div className="text-red-500 text-sm mt-2">
+      {error}
+    </div>
+  )}
 
   const resetForm = () => {
     setFileName('');
@@ -117,16 +142,17 @@ const NewFileButton = () => {
               >
                 Cancel
               </button>
+              // Update submit button
               <button
                 onClick={handleSubmit}
-                disabled={!fileName.trim()}
+                disabled={!fileName.trim() || isLoading}
                 className={`px-4 py-2 text-white rounded-md ${
-                  !fileName.trim() 
+                  !fileName.trim() || isLoading
                     ? 'bg-gray-400 cursor-not-allowed' 
                     : 'bg-green-600 hover:bg-green-500'
                 }`}
               >
-                Create File
+                {isLoading ? 'Creating...' : 'Create File'}
               </button>
             </div>
           </div>

@@ -1,22 +1,18 @@
 import React from 'react';
-import { UserProfile } from './UserProfile.jsx';
 import {
   FileKey, FileText, ZoomOut, ZoomIn, Bold, Italic, Underline, 
-  AlignLeft, AlignCenter, AlignRight, AlignJustify,BookOpen,FileCog
+  AlignLeft, AlignCenter, AlignRight, AlignJustify, BookOpen, FileCog,
+  Download, Table, Upload, BarChart2, PieChart, LineChart as LineChartIcon,
+  LogIn, FileX2, Menu, Type, Plus, Sliders, Undo, Redo,
+  AreaChart, ChartScatter, Radar, Layout, RadioTower, TrendingUp,
+  ChevronDown
 } from 'lucide-react';
-import {
-  Download, Table, Upload, BarChart2, PieChart, 
-  LineChart as LineChartIcon, LogIn, FileX2
-} from 'lucide-react';
-import { useAuthStore } from '../Store/useStore.js';
-import { AuthGuard } from './AuthGuard.jsx';
-import NewFileButton from './NewFileButton.jsx';
-import { useSpreadsheetStore } from '../Store/useStore.js';
+
+import { useAuthStore, useSpreadsheetStore } from '../Store/useStore';
+import { AuthGuard } from './AuthGuard';
+import NewFileButton from './NewFileButton';
 import { useNavigate } from 'react-router-dom';
-
-//const navigate = useNavigate()
-
-
+import { UserProfile } from './UserProfile';
 const fonts = [
   "Roboto",
   "Open Sans",
@@ -121,10 +117,20 @@ const fonts = [
   "Fredoka One"
 ];
 
+
 function Headers(props) {
+  const [showChartMenu, setShowChartMenu] = React.useState(false);
+  const chartMenuRef = React.useRef(null);
+
+  const undo = useSpreadsheetStore((state) => state.undo);
+  const redo = useSpreadsheetStore((state) => state.redo);
+  const undoStack = useSpreadsheetStore((state) => state.undoStack);
+  const redoStack = useSpreadsheetStore((state) => state.redoStack);
   const { isAuthenticated } = useAuthStore();
   const { resetData } = useSpreadsheetStore();
   const navigate = useNavigate();
+  const { fileUserName } = useAuthStore();
+
   const {
     handleDataSelection,
     exportToCSV,
@@ -138,141 +144,222 @@ function Headers(props) {
     onTextAlignment,
   } = props;
 
+  // Chart types configuration
+  const chartTypes = [
+    { id: 'bar', label: 'Bar Chart', Icon: BarChart2 },
+    { id: 'stackedBar', label: 'Stacked Bar', Icon: Layout },
+    { id: 'line', label: 'Line Chart', Icon: LineChartIcon },
+    { id: 'multiLine', label: 'Multi-Line Chart', Icon: TrendingUp },
+    { id: 'area', label: 'Area Chart', Icon: AreaChart },
+    { id: 'pie', label: 'Pie Chart', Icon: PieChart },
+    { id: 'scatter', label: 'Scatter Plot', Icon: ChartScatter },
+    { id: 'radar', label: 'Radar Chart', Icon: Radar },
+    { id: 'composed', label: 'Composed Chart', Icon: Layout },
+    { id: 'radialBar', label: 'Radial Bar', Icon: RadioTower },
+  ];
+
+  // Close chart menu when clicking outside
+  React.useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (chartMenuRef.current && !chartMenuRef.current.contains(event.target)) {
+        setShowChartMenu(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
   return (
-    <header className="w-full h-28 border-b-4 border-gray-700 bg-gradient-to-r from-gray-900 via-gray-700 to-gray-600 text-white shadow-lg flex items-center justify-between px-4">
-      <div className='border-2 p-2 rounded-md m-2'>
-          file125135
-        </div>
-      {/* Left Section: Chart Controls */}
-      <div className="flex gap-4 items-center">
-        <button
-          onClick={() => setGraphType("bar")}
-          className="flex items-center bg-blue-600 hover:bg-blue-500 text-white p-2 rounded shadow"
-        >
-          <BarChart2 size={20} />
-        </button>
-        <button
-          onClick={() => setGraphType("pie")}
-          className="flex items-center bg-green-600 hover:bg-green-500 text-white p-2 rounded shadow"
-        >
-          <PieChart size={20} />
-        </button>
-        <button
-          onClick={() => setGraphType("line")}
-          className="flex items-center bg-indigo-600 hover:bg-indigo-500 text-white p-2 rounded shadow"
-        >
-          <LineChartIcon size={20} />
-        </button>
-        <button
-          onClick={handleDataSelection}
-          className="flex items-center bg-purple-600 hover:bg-purple-500 p-2 rounded shadow"
-        >
-          Visualize Data
-        </button>
-      </div>
+    <header className="w-full bg-gray-900 text-white shadow-xl">
+      {/* Top Bar */}
+      <div className="flex items-center justify-between px-4 py-2 border-b border-gray-700">
+        {/* Left Section - File Operations */}
+        <div className="flex items-center gap-3">
+          <NewFileButton />
 
-      {/* Middle Section: Text Editing Tools */}
-      <div className="flex gap-4 items-center">
-      <div className="flex gap-2">
-      {/* Font Selector */}
-      <select
-        className="p-2 bg-gray-800 text-white rounded shadow"
-        name="font"
-        id="font"
-        onChange={(e) => onFontChange(e.target.value)}
-      >
-        {fonts.map((font, index) => (
-          <option
-            key={index}
-            value={font}
-            style={{ fontFamily: font }}
+          {/* File Menu */}
+          <div className="relative group">
+            <button className="flex items-center gap-1 px-3 py-1.5 rounded-md hover:bg-gray-800 bg-red-600">
+              <Menu size={18} />
+              <span>File</span>
+            </button>
+            <div className="invisible opacity-0 group-hover:visible group-hover:opacity-100 transition-all duration-200 absolute top-full left-0 bg-gray-800 rounded-lg p-2 mt-1 shadow-lg min-w-[200px] z-50">
+              <label className="flex items-center gap-2 px-3 py-2 rounded-md hover:bg-gray-700 cursor-pointer">
+                <Upload size={16} />
+                Import CSV
+                <input
+                  type="file"
+                  ref={fileInputRef}
+                  accept=".csv"
+                  onChange={importCSV}
+                  className="hidden"
+                />
+              </label>
+              <button
+                onClick={exportToCSV}
+                className="w-full flex items-center gap-2 px-3 py-2 rounded-md hover:bg-gray-700"
+              >
+                <Download size={16} />
+                Export CSV
+              </button>
+              <button
+                onClick={() => navigate('/admin')}
+                className="w-full flex items-center gap-2 px-3 py-2 rounded-md hover:bg-gray-700"
+              >
+                <FileCog size={16} />
+                Admin Panel
+              </button>
+              <button
+                onClick={() => navigate('/docs')}
+                className="w-full flex items-center gap-2 px-3 py-2 rounded-md hover:bg-gray-700"
+              >
+                <BookOpen size={16} />
+                Documentation
+              </button>
+            </div>
+          </div>
+          <div className="text-sm text-white ml-2 bg-amber-500 p-2 rounded-md">
+            Current File: <span className="font-mono">{fileUserName}</span>
+          </div>
+        </div>
+
+        {/* Right Section - User & Zoom */}
+        <div className="flex items-center gap-4">
+          <div className="flex items-center bg-sky-600 rounded-lg p-1">
+          <button
+            onClick={undo}
+            disabled={!undoStack.length}
+            className="flex items-center gap-1 px-3 py-1.5 rounded-md hover:bg-gray-800"
           >
-            {font}
-          </option>
-        ))}
-      </select>
-      
-      {/* Font Size Controls */}
-      <button
-        className="bg-gray-800 p-2 rounded shadow"
-        onClick={() => onFontSizeChange((prev)=>prev+1)}
-      >
-        A+
-      </button>
-      <button
-        className="bg-gray-800 p-2 rounded shadow"
-        onClick={() => onFontSizeChange((prev)=>prev-1)}
-      >
-        A-
-      </button>
-    </div>
-        <div className="flex gap-2">
-          <button className="bg-gray-800 p-2 rounded shadow" onClick={() => onTextFormat("bold")}>
-            <Bold />
+            <Undo size={18} />
           </button>
-          <button className="bg-gray-800 p-2 rounded shadow" onClick={() => onTextFormat("italic")}>
-            <Italic />
+          <button
+            onClick={redo}
+            disabled={!redoStack.length}
+            className="flex items-center gap-1 px-3 py-1.5 rounded-md hover:bg-gray-800 "
+          >
+            <Redo size={18} />
           </button>
-          <button className="bg-gray-800 p-2 rounded shadow" onClick={() => onTextFormat("underline")}>
-            <Underline />
-          </button>
-          <button className="bg-gray-800 p-2 rounded shadow" onClick={() => onTextAlignment("left")}>
-            <AlignLeft />
-          </button>
-          <button className="bg-gray-800 p-2 rounded shadow" onClick={() => onTextAlignment("center")}>
-            <AlignCenter />
-          </button>
-          <button className="bg-gray-800 p-2 rounded shadow" onClick={() => onTextAlignment("right")}>
-            <AlignRight />
-          </button>
-          <button className="bg-gray-800 p-2 rounded shadow" onClick={() => onTextAlignment("justify")}>
-            <AlignJustify />
-          </button>
+          </div>
+          <AuthGuard children={<UserProfile />} />
         </div>
       </div>
 
-      {/* Right Section: File and Zoom Controls */}
-      <div className="flex gap-4 items-center">
-      <NewFileButton />
-      <button 
-  className="flex items-center bg-blue-600 hover:bg-blue-500 text-white p-2 rounded shadow"
-  onClick={() => navigate('/docs')}
->  
-  <BookOpen className="w-6 h-6" />
-   docs
-</button>
-        <button
-          onClick={exportToCSV}
-          className="flex items-center bg-blue-600 hover:bg-blue-500 text-white p-2 rounded shadow"
-        >
-          <Download size={20} />
-          Export CSV
-        </button>
-        <button
-          onClick={()=>navigate('/admin')}
-          className="flex items-center bg-indigo-600 hover:bg-indigo-500 text-white p-2 rounded shadow"
-        >
-          <FileCog />
-          Admin Panel
-        </button>
-        <label className="flex items-center bg-purple-600 hover:bg-purple-500 text-white p-2 rounded shadow cursor-pointer">
-          <Upload size={20} />
-          Import CSV
-          <input
-            type="file"
-            ref={fileInputRef}
-            accept=".csv"
-            onChange={importCSV}
-            className="hidden"
-          />
-        </label>
+      {/* Bottom Bar - Tools */}
+      <div className="flex items-center justify-between px-4 py-2">
+        {/* Chart Controls */}
+        <div className="flex items-center gap-2">
+          {/* Chart Type Selection */}
+          <div className="relative" ref={chartMenuRef}>
+            <button
+              onClick={() => setShowChartMenu(!showChartMenu)}
+              className="flex items-center gap-2 px-3 py-1.5 bg-violet-800 hover:bg-gray-700 rounded-md"
+            >
+              <BarChart2 size={16} />
+              Chart Type
+              <ChevronDown size={14} className={`transform transition-transform ${showChartMenu ? 'rotate-180' : ''}`} />
+            </button>
+            {showChartMenu && (
+              <div className="absolute top-full left-0 mt-1 bg-gray-800 rounded-lg shadow-xl p-2 z-50 grid grid-cols-2 gap-1 min-w-[300px]">
+                {chartTypes.map(({ id, label, Icon }) => (
+                  <button
+                    key={id}
+                    onClick={() => {
+                      setGraphType(id);
+                      setShowChartMenu(false);
+                    }}
+                    className="flex items-center gap-2 px-3 py-2 rounded-md hover:bg-gray-700 w-full"
+                  >
+                    <Icon size={16} />
+                    <span className="text-sm">{label}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+          
+          <button
+            onClick={handleDataSelection}
+            className="flex items-center gap-2 px-3 py-1.5 bg-blue-600 hover:bg-blue-500 rounded-md"
+          >
+            <Sliders size={16} />
+            Visualize Data
+          </button>
+        </div>
 
+        {/* Formatting Tools */}
+        <div className="flex items-center gap-4">
+          {/* Font Controls */}
+          <div className="flex items-center bg-teal-600 rounded-lg p-1">
+            <select
+              className="bg-teal-700 px-2 py-1 text-sm rounded-md hover:bg-gray-700"
+              onChange={(e) => onFontChange(e.target.value)}
+            >
+              {fonts.map((font, index) => (
+                <option key={index} value={font} style={{ fontFamily: font }}>
+                  {font}
+                </option>
+              ))}
+            </select>
+            <div className="flex">
+              <button
+                onClick={() => onFontSizeChange(prev => prev - 1)}
+                className="px-2 py-1 hover:bg-gray-700 rounded-l-md"
+              >
+                A-
+              </button>
+              <button
+                onClick={() => onFontSizeChange(prev => prev + 1)}
+                className="px-2 py-1 hover:bg-gray-700 rounded-r-md"
+              >
+                A+
+              </button>
+            </div>
+          </div>
 
-      </div>
+          {/* Text Formatting */}
+          <div className="flex items-center gap-1 bg-purple-600 rounded-lg p-1">
+            <button
+              onClick={() => onTextFormat("bold")}
+              className="p-2 hover:bg-gray-700 rounded-md"
+              title="Bold"
+            >
+              <Bold size={16} />
+            </button>
+            <button
+              onClick={() => onTextFormat("italic")}
+              className="p-2 hover:bg-gray-700 rounded-md"
+              title="Italic"
+            >
+              <Italic size={16} />
+            </button>
+            <button
+              onClick={() => onTextFormat("underline")}
+              className="p-2 hover:bg-gray-700 rounded-md"
+              title="Underline"
+            >
+              <Underline size={16} />
+            </button>
+          </div>
 
-      {/* User Profile */}
-      <div className="flex items-center">
-        {<AuthGuard children={<UserProfile />} />}
+          {/* Text Alignment */}
+          <div className="flex items-center gap-1 bg-orange-600 rounded-lg p-1">
+            {['left', 'center', 'right', 'justify'].map((align) => (
+              <button
+                key={align}
+                onClick={() => onTextAlignment(align)}
+                className="p-2 hover:bg-gray-700 rounded-md"
+                title={`Align ${align}`}
+              >
+                {React.createElement(
+                  { left: AlignLeft, center: AlignCenter, right: AlignRight, justify: AlignJustify }[align],
+                  { size: 16 }
+                )}
+              </button>
+            ))}
+          </div>
+        </div>
       </div>
     </header>
   );

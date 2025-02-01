@@ -4,8 +4,10 @@ import { generateSignedUrl } from '../utils/s3Utils.js';
 import axios from "axios"
 import { User } from '../Model/Db_config.js';
 import { redisCache } from '../Cache/RedisConfig.js';
-import { fileNamingMaps } from '../Server.js';
-
+import fs from "fs";
+import fastcsv from "fast-csv";
+import { uploadFileToS3 } from '../utils/s3Utils.js';
+import crypto from "crypto"
 
 export const router = Router();
 
@@ -25,11 +27,12 @@ router.get("/admin", isAuthenticated, async (req, res) => {
         // Fetch permissions for each file
         const query2 = `
           SELECT email, read_permission, write_permission, assigned_at
-          FROM file_permissions WHERE file_id = $1;
+          FROM file_permissions WHERE file_id = $1 and is_admin = 'false';
         `;
         const permissionResult = await User.query(query2, [file.file_id]);
 
         return {
+          fileId: file.file_id,
           file_name_user: file.file_name_user,
           modified_at: file.modified_at,
           permissions: permissionResult.rows.map((row) => ({
@@ -42,6 +45,7 @@ router.get("/admin", isAuthenticated, async (req, res) => {
       })
     );
     console.log(fileData)
+
     return res.json({
       success: true,
       data: fileData,
@@ -65,24 +69,148 @@ router.get("/admin", isAuthenticated, async (req, res) => {
     return res.send({fileNameForUser: fileNameFromUser})
   })
 
-router.post("/file/rename",isAuthenticated,async (req,res)=>{
-  const {file_id,fileNewName} = req.body
-  const googleId = req.user.google_id;
 
-  const result1 = await User.query(`select file_name_user from project_files
-    where google_id = $1;
-    `,[googleId])
-  const files = result1.rows[0]  
-  if(files.has(fileNewName)){
-    return res.json("error", "name already in use")
-  }  
-  const result = await User.query(`update project_files set file_user_name = $1
-    where file_id = $2 and google_id = $3 returning file_user_name;
-    `,[fileNewName,file_id,googleId])
-  if(result.rows.length > 0){
-    return res.json(result.rows[0].file_name_user)
-  }  
-})  
+  router.post("/newfile", isAuthenticated, async (req, res) => {
+    try {
+      const { fileNamebyUser, UserPermissions } = req.body;
+      const googleId = req.user.google_id;
+      const userEmail = req.user.email;
+  
+      // Generate unique file ID
+      const fileName = `file_${Date.now()}_${googleId}.csv`;
+      const filePath = `./${fileName}`;
+      
+      // Create empty CSV
+      const data = Array(100).fill().map(() => Array(10).fill(''));
+      await new Promise((resolve, reject) => {
+        fastcsv
+          .write(data, { headers: false })
+          .pipe(fs.createWriteStream(filePath))
+          .on("finish", resolve)
+          .on("error", reject);
+      });
+  
+      // Upload to S3
+      const fileUrl = await uploadFileToS3(
+        `${process.env.S3_BUCKET_NAME}/${googleId}`,
+        fileName,
+        filePath
+      );
+      fs.unlinkSync(filePath); // Clean up local file
+  
+      // Insert file record
+      await User.query(
+        `INSERT INTO project_files (google_id, file_id, file_name_user, location, email)
+         VALUES ($1, $2, $3, $4, $5)`,
+        [googleId, fileName, fileNamebyUser, fileUrl, userEmail]
+      );
+  
+      // Set permissions
+      const permissions = [
+        // Owner permissions (use existing googleId)
+        {
+          userId: googleId,
+          email: userEmail,
+          read: true,
+          write: true,
+          isAdmin: true
+        },
+        // Add other users
+        ...await Promise.all(UserPermissions.map(async (u) => {
+          const userResult = await User.query(
+            `SELECT google_id FROM users WHERE email = $1`,
+            [u.email]
+          );
+          return {
+            userId: userResult.rows[0]?.google_id,
+            email: u.email,
+            read: u.permission === 'view' || u.permission === 'edit',
+            write: u.permission === 'edit',
+            isAdmin: false
+          };
+        }))
+      ];
+  
+      // Filter out invalid users and insert permissions
+      const validPermissions = permissions.filter(p => p.userId);
+      const invalidEmails = permissions.filter(p => !p.userId).map(p => p.email);
+  
+      for (const perm of validPermissions) {
+        await User.query(
+          `INSERT INTO file_permissions 
+           (file_id, user_id, email, read_permission, write_permission, is_admin)
+           VALUES ($1, $2, $3, $4, $5, $6)
+           ON CONFLICT (file_id, user_id) DO UPDATE SET
+             read_permission = EXCLUDED.read_permission,
+             write_permission = EXCLUDED.write_permission`,
+          [fileName, perm.userId, perm.email, perm.read, perm.write, perm.isAdmin]
+        );
+      }
+  
+      res.json({
+        success: true,
+        newFile: {
+          fileId: fileName,
+          fileName: fileNamebyUser,
+          authorizedEmails: validPermissions.map(p => p.email),
+          permissions: validPermissions.map(p => 
+            p.write ? 'Read + Write' : 'Read'
+          ),
+          lastModified: new Date().toISOString(),
+          token: { value: "", expiresAt: null }
+        },
+        invalidEmails: invalidEmails
+      });
+  
+    } catch (error) {
+      console.error('File creation error:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Failed to create file',
+        error: error.message
+      });
+    }
+  });
+
+  router.post("/file/rename", isAuthenticated, async (req, res) => {
+    try {
+      const { file_Old_name, fileNewName } = req.body;
+      const googleId = req.user.google_id;
+      
+      console.log("i got hit ", fileNewName,file_Old_name,googleId);
+  
+      // Get all file names for the user
+      const result1 = await User.query(
+        `SELECT file_name_user FROM project_files WHERE google_id = $1;`,
+        [googleId]
+      );
+  
+      const files = result1.rows.map(row => row.file_name_user); // Convert rows to an array
+  
+      // Check if the new file name is already used
+      if (files.includes(fileNewName)) {
+        return res.status(400).json({ error: "Name already in use" });
+      }
+  
+      // Update file name
+      const result = await User.query(
+        `UPDATE project_files SET file_name_user = $1
+         WHERE file_name_user = $2 AND google_id = $3 RETURNING file_name_user;`,
+        [fileNewName,file_Old_name,googleId]
+      );
+  
+      if (result.rowCount > 0) {
+        console.log("Updated file:", result.rows[0]);
+        return res.json({ file_name_user: result.rows[0].file_name_user });
+      } else {
+        return res.status(404).json({ error: "File not found" });
+      }
+    } catch (error) {
+      console.error("Error renaming file:", error);
+      return res.status(500).json({ error: "Internal server error" });
+    }
+  });
+  
 
   router.get("/file/:fileName/writeCheck", isAuthenticated, async (req, res) => {
     try {
@@ -117,61 +245,63 @@ router.post("/file/rename",isAuthenticated,async (req,res)=>{
     const googleId = req.user.google_id;
   
     try {
-      const result = await User.query(`SELECT read_permission,write_permission
-        from file_permissions where file_id = $1 and user_id = $2;`
-        ,[fileName,googleId])
-      console.log(result.rows[0])
+      // Check user permissions
+      const result = await User.query(
+        `SELECT read_permission, write_permission 
+         FROM file_permissions 
+         WHERE file_id = $1 AND user_id = $2;`,
+        [fileName, googleId]
+      );
+  
       if (!result.rows.length || !result.rows[0].read_permission) {
-        return res.send("denied");
-      }
-      const resp = await redisCache.get(fileName);
-      console.log("Data from Redis:");
-            // Fetch data from Redis
-
-      if (resp != null) {
-        // Parse Redis data into an array
-        const parsedArray = JSON.parse(resp);
-  
-        // Convert array to CSV
-        function arrayToCSV(array) {
-          return array
-            .map(row => row.map(cell => `${cell}`).join(',')) // Wrap each cell in quotes
-            .join('\n'); // Join rows with a newline
-        }
-  
-        const csv = arrayToCSV(parsedArray);
-        return res.set('Content-Type', 'text/csv').send(csv); // Send CSV response
-         
+        return res.send({ error: "denied" });
       }
   
-      // If not found in Redis, fetch Google ID and signed URL
+      // Check if data is in Redis
+      const cachedData = await redisCache.get(fileName);
+      // const cachedFileName = await redisCache.get(`${fileName}name`);
+  
+      if (cachedData && cachedFileName) {
+        return res.json({
+          fileNameForUser: cachedFileName,
+          fileContent: JSON.parse(cachedData),
+        });
+      }
+  
+      // If not found in Redis, fetch from DB
       const response = await User.query(
-        "SELECT google_id,file_name_user FROM project_files WHERE file_id = $1",
+        `SELECT google_id, file_name_user FROM project_files WHERE file_id = $1`,
         [fileName]
       );
-     
-      const file_name_user = response.rows[0].file_name_user
-      //console.log(file_name_user)
+  
       if (!response.rows.length) {
         return res.status(404).send("File not found.");
       }
   
+      const { google_id, file_name_user } = response.rows[0];
+  
+      // Generate Signed URL and fetch file data
       const signedUrl = await generateSignedUrl(
-          `${process.env.S3_BUCKET_NAME}/${response.rows[0].google_id}`,
+        `${process.env.S3_BUCKET_NAME}/${google_id}`,
         fileName
       );
   
       const fileData = await axios.get(signedUrl);
-      await redisCache.set(`${fileName}name`, file_name_user); // Instead of fileName + "name"
-      console.log("REDIS RES=>",await redisCache.get(`${fileName}name`))
-
-
-      return res.send(fileData.data);
+  
+      // Store in Redis for faster future retrieval
+      await redisCache.set(fileName, JSON.stringify(fileData.data));
+      // await redisCache.set(`${fileName}name`, file_name_user);
+  
+      return res.json({
+        fileNameForUser: file_name_user,
+        fileContent: fileData.data,
+      });
     } catch (error) {
-      console.error("Error fetching or converting file:", error);
+      console.error("Error fetching file:", error);
       return res.status(500).send("Internal Server Error.");
     }
   });
+  
 
 router.post('/admin/files/:fileName/users', isAuthenticated, async (req, res) => {
   try {
@@ -216,9 +346,9 @@ DO UPDATE SET
         [file_name,googleId,read_permission || false, write_permission || false,email,false ]
         
       );
-      console.log("fucked up ",updateFilePermissions.rows[0])
+      console.log(updateFilePermissions.rows[0])
     } catch (error) {
-      console.log("fucked up ",error)
+      console.log(error)
     }
 
     // If the file permission update was not successful
@@ -238,11 +368,14 @@ router.put('/admin/files/:fileName/users/:email', isAuthenticated, async (req, r
   try {
     const { fileName, email } = req.params;
     const { read_permission, write_permission } = req.body;
+    const google_id = req.user.google_id;
 
     // Check if the file exists
     const fileResult = await User.query(
-      `SELECT * FROM project_files WHERE file_id = $1`,
-      [fileName]
+      `SELECT file_id FROM project_files WHERE file_name_user = $1 
+      AND google_id = $2;
+      `,
+      [fileName,google_id]
     );
     if (fileResult.rows.length === 0) {
       return res.status(404).json({ error: 'File not found' });
@@ -256,6 +389,7 @@ router.put('/admin/files/:fileName/users/:email', isAuthenticated, async (req, r
     if (userResult.rows.length === 0) {
       return res.status(404).json({ error: 'User not found' });
     }
+    const file_id = fileResult.rows[0].file_id
 
     // Update user permissions in the project_files table
     const updateResult = await User.query(
@@ -263,7 +397,7 @@ router.put('/admin/files/:fileName/users/:email', isAuthenticated, async (req, r
        SET read_permission = $1, write_permission = $2, assigned_at = CURRENT_TIMESTAMP
        WHERE file_id = $3 AND email = $4 
        RETURNING *`,
-      [read_permission, write_permission, fileName, email]
+      [read_permission, write_permission, file_id, email]
     );
     console.log(updateResult.rows[0])
 
@@ -275,5 +409,209 @@ router.put('/admin/files/:fileName/users/:email', isAuthenticated, async (req, r
   } catch (error) {
     console.error('Error updating permissions:', error);
     res.status(500).json({ error: error.message });
+  }
+});
+
+
+router.post("/admin/generateToken", isAuthenticated, async (req, res) => {
+  try {
+    console.log("i got hit from token req")
+    const google_id = req.user.google_id;
+    const { time, fileName } = req.body;
+    console.log("data from token req => ",req.body)
+
+    // Validate input
+    if (!time || !fileName) {
+      return res.status(400).json({ error: "Missing required fields" });
+    }
+
+    // Get file ID from database
+    const result = await User.query(`
+      SELECT file_id FROM project_files 
+      WHERE file_name_user = $1 AND google_id = $2;
+    `, [fileName, google_id]);
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: "File not found" });
+    }
+
+    const fileId = result.rows[0].file_id;
+
+    // Check for existing token
+    const existingToken = await redisCache.get(`${fileId}token`);
+    if (existingToken) {
+      return res.json({
+        token: existingToken,
+        url: `http://localhost:5173/file/${fileId}/${existingToken}`
+      });
+    }
+
+    // Generate new token and set expiration
+    const token = crypto.randomBytes(8).toString('base64');
+
+    const expiresIn = convertToSeconds(time); // Implement time conversion
+    
+    await redisCache.set(`${fileId}token`, token, 'EX', expiresIn);
+
+
+    return res.json({
+      token: token,
+      url: `http://localhost:5173/file/${fileId}/${token}`,
+      expiresAt: Date.now() + (expiresIn * 1000)
+    });
+
+  } catch (error) {
+    console.error("Token generation error:", error);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// Helper function to convert time string to seconds
+function convertToSeconds(timeStr) {
+  const value = parseInt(timeStr);
+  const unit = timeStr.slice(-1);
+  
+  switch (unit) {
+    case 'm': return value * 60;
+    case 'h': return value * 60 * 60;
+    case 'd': return value * 60 * 60 * 24;
+    default: throw new Error('Invalid time unit');
+  }
+}
+
+
+router.get("/token/file/:file_id/:token", async (req, res) => {
+  try {
+    const { file_id, token } = req.params;
+    console.log("Received token file request:", file_id, token);
+
+    // Get the token stored in Redis
+    const cachedToken = await redisCache.get(`${file_id}token`);
+
+    if (!cachedToken || cachedToken !== token) {
+      return res.status(403).json({ error: "Invalid or expired token" });
+    }
+
+    // Get google_id from database
+    const resp = await User.query(
+      `SELECT google_id FROM project_files WHERE file_id = $1;`,
+      [file_id]
+    );
+
+    if (resp.rows.length === 0) {
+      return res.status(404).json({ error: "File not found" });
+    }
+
+    const google_id = resp.rows[0].google_id;
+
+    // Generate signed URL
+    const signedUrl = await generateSignedUrl(
+      `${process.env.S3_BUCKET_NAME}/${google_id}`,
+      file_id
+    );
+
+    console.log("Generated signed URL:", signedUrl);
+
+    // Fetch file data
+    const fileResponse = await axios.get(signedUrl);
+    
+    return res.send(fileResponse.data);
+  } catch (error) {
+    console.error("Error fetching file:", error);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+
+
+// Delete file route
+router.delete('/admin/files/:fileName', isAuthenticated, async (req, res) => {
+  try {
+    const { fileName } = req.params;
+    const googleId = req.user.google_id;
+
+    const fileCount = await User.query(
+      `SELECT count(file_id) from project_files
+      where google_id = $1;
+      `,
+    [googleId])
+    console.log(fileCount.rows[0])
+    if(fileCount.rows[0].count == 1){
+      return res.status(404).json({error: "one file needs to exist"})
+    }
+
+    // Get file ID
+    const fileResult = await User.query(
+      `SELECT file_id FROM project_files 
+       WHERE file_name_user = $1 AND google_id = $2`,
+      [fileName, googleId]
+    );
+   
+    
+    if (fileResult.rows.length === 0) {
+      return res.status(404).json({ error: 'File not found' });
+    }
+    const fileId = fileResult.rows[0].file_id;
+
+    // Delete permissions
+    await User.query(
+      `DELETE FROM file_permissions WHERE file_id = $1`,
+      [fileId]
+    );
+
+    // Delete file record
+    await User.query(
+      `DELETE FROM project_files WHERE file_id = $1`,
+      [fileId]
+    );
+
+    // Delete from Redis cache
+    await redisCache.del(fileId);
+    await redisCache.del(`${fileId}token`);
+    await redisCache.del(`${fileId}name`);
+
+    res.json({ success: true });
+
+  } catch (error) {
+    console.error('Error deleting file:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Delete user from file route
+router.delete('/admin/files/:fileName/users/:email', isAuthenticated, async (req, res) => {
+  try {
+    const { fileName, email } = req.params;
+    const googleId = req.user.google_id;
+
+    // Get file ID
+    const fileResult = await User.query(
+      `SELECT file_id FROM project_files 
+       WHERE file_name_user = $1 AND google_id = $2`,
+      [fileName, googleId]
+    );
+    
+    if (fileResult.rows.length === 0) {
+      return res.status(404).json({ error: 'File not found' });
+    }
+    const fileId = fileResult.rows[0].file_id;
+
+    // Delete user permission
+    const result = await User.query(
+      `DELETE FROM file_permissions 
+       WHERE file_id = $1 AND email = $2
+       RETURNING *`,
+      [fileId, email]
+    );
+
+    if (result.rowCount === 0) {
+      return res.status(404).json({ error: 'User not found in file permissions' });
+    }
+
+    res.json({ success: true });
+
+  } catch (error) {
+    console.error('Error deleting user:', error);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });

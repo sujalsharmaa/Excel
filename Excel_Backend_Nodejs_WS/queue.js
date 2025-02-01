@@ -29,6 +29,7 @@ s3UploadQueue.process(async (job) => {
     // Upload to S3
     const fileLocation = await uploadFileToS3(bucket, key, csvData);
     console.log(`File uploaded successfully to: ${fileLocation}`);
+    
   } catch (error) {
     console.error('Error processing S3 upload:', error.message);
     throw error;

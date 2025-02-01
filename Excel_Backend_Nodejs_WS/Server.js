@@ -178,6 +178,12 @@ const uploadAndCleanup = async (fileName) => {
         key: `${googleId}/${fileName}`,
         spreadsheet: fileData,
       });
+      const result = await User.query(`UPDATE project_files SET modified_at = NOW()
+        WHERE file_id = $1 and google_id = $2;
+        `,[fileName,googleId])
+      if(result.rowCount > 0){
+        console.log("update the modified_at for file ",fileName)
+      }  
 
       console.log(`File ${fileName} uploaded to S3 successfully.`);
     } catch (error) {

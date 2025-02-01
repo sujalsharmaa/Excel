@@ -18,7 +18,8 @@ import {
 } from 'recharts';
 import { toPng } from 'html-to-image';
 import * as formulajs from 'formulajs';
-
+import EnhancedCharts from './EnhancedCharts';
+import LoadingSpinner from './LoadingSpinner';
 
 const COLORS = [
   '#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884D8',
@@ -51,27 +52,42 @@ const FUNCTION_SIGNATURES = {
 };
 
 const ExcelClone = () => {
+  // const [isLoading, setIsLoading] = useState(false);
+
   const { ROWS, COLS, data, setCellValue, importData } = useSpreadsheetStore();
   const [selectedCell, setSelectedCell] = useState(null);
   const [selectedCells, setSelectedCells] = useState([]);
   const [dragStart, setDragStart] = useState(null);
   const [calculatedCells, setCalculatedCells] = useState(new Set());
   const [selectedData, setSelectedData] = useState([]);
-  const [graphType, setGraphType] = useState(null);
+  const [graphType, setGraphType] = useState("bar");
   const [isGraphModalOpen, setIsGraphModalOpen] = useState(false);
   const [editingCell, setEditingCell] = useState(null);
   const undo = useSpreadsheetStore((state) => state.undo);
   const redo = useSpreadsheetStore((state) => state.redo);
+  const isLoading = useSpreadsheetStore(state => state.isLoading);
 
-  useEffect(() => {
-    const handleKeyDown = (e) => {
-      if ((e.ctrlKey || e.metaKey) && e.key === 'z') {
-        e.preventDefault();
-        undo();
-      } else if ((e.ctrlKey || e.metaKey) && e.key === 'y') {
-        e.preventDefault();
-        redo();
-      }}})
+
+// Add this useEffect for keyboard shortcuts
+useEffect(() => {
+  const handleKeyDown = (e) => {
+    if ((e.ctrlKey || e.metaKey) && e.key === 'z') {
+      e.preventDefault();
+      undo();
+    } else if ((e.ctrlKey || e.metaKey) && e.key === 'y') {
+      e.preventDefault();
+      redo();
+    }
+  };
+
+  // Add event listener
+  document.addEventListener('keydown', handleKeyDown);
+  
+  // Cleanup function to remove listener
+  return () => {
+    document.removeEventListener('keydown', handleKeyDown);
+  };
+}, [undo, redo]); // Add undo and redo as dependencies
   
 
   
@@ -240,6 +256,10 @@ useEffect(() => {
           setSelectedSuggestionIndex(prev => Math.max(prev - 1, 0));
           break;
         case 'Enter':
+          e.preventDefault();
+          setShowFormulaSuggestions(false);
+          break;
+
         case 'Tab':
           e.preventDefault();
           if (suggestedFunctions.length > 0) {
@@ -512,13 +532,52 @@ useEffect(() => {
 
   // Charting functionality
   const handleDataSelection = () => {
-    const selectedValues = selectedCells.map(({ row, col }) => ({
-      name: `Row ${row + 1} Col ${getColumnName(col)}`,
-      value: parseFloat(data[row][col]) || 0,
-    }));
-    setSelectedData(selectedValues);
+    if (selectedCells.length === 0) {
+      alert("Please select some cells to visualize");
+      return;
+    }
+
+    // Get column headers if first row is selected
+    const hasHeaders = selectedCells.some(cell => cell.row === 0);
+    const processedData = [];
+    
+    if (hasHeaders) {
+      // Skip first row in data processing if headers are present
+      const headerRow = selectedCells.filter(cell => cell.row === 0);
+      const dataRows = selectedCells.filter(cell => cell.row !== 0);
+      
+      // Group cells by row
+      const rowGroups = {};
+      dataRows.forEach(({row, col}) => {
+        if (!rowGroups[row]) rowGroups[row] = [];
+        rowGroups[row].push({col, value: data[row][col]});
+      });
+
+      // Create data objects with header names
+      Object.entries(rowGroups).forEach(([row, cells]) => {
+        const dataPoint = {};
+        cells.forEach((cell, index) => {
+          const headerCell = headerRow[index];
+          const headerName = headerCell ? data[headerCell.row][headerCell.col] : `Column ${index + 1}`;
+          dataPoint.name = headerName;
+          dataPoint.value = parseFloat(cell.value) || 0;
+        });
+        processedData.push(dataPoint);
+      });
+    } else {
+      // No headers - use simple name/value pairs
+      selectedCells.forEach(({row, col}) => {
+        processedData.push({
+          name: `${getColumnName(col)}${row + 1}`,
+          value: parseFloat(data[row][col]) || 0
+        });
+      });
+    }
+
+    setSelectedData(processedData);
     setIsGraphModalOpen(true);
   };
+
 
   const exportGraphToPNG = () => {
     toPng(graphRef.current, { cacheBust: true })
@@ -531,47 +590,37 @@ useEffect(() => {
       .catch(console.error);
   };
 
-  const renderGraph = () => {
-    if (!selectedData.length) return <div className="text-red-500">No data selected</div>;
+  const renderGraphModal = () => {
+    if (!isGraphModalOpen) return null;
 
-    switch (graphType) {
-      case 'bar':
-        return (
-          <BarChart width={600} height={400} data={selectedData}>
-            <CartesianGrid strokeDasharray="3 3" />
-            <XAxis dataKey="name" />
-            <YAxis />
-            <Tooltip />
-            <Legend />
-            <Bar dataKey="value" fill="#0088FE" />
-          </BarChart>
-        );
-      case 'pie':
-        return (
-          <RechartsPieChart width={600} height={450}>
-            <Pie data={selectedData} cx={300} cy={200} outerRadius={150} dataKey="value">
-              {selectedData.map((_, i) => (
-                <Cell key={i} fill={COLORS[i % COLORS.length]} />
-              ))}
-            </Pie>
-            <Tooltip />
-            <Legend />
-          </RechartsPieChart>
-        );
-      case 'line':
-        return (
-          <LineChart width={600} height={400} data={selectedData}>
-            <CartesianGrid strokeDasharray="3 3" />
-            <XAxis dataKey="name" />
-            <YAxis />
-            <Tooltip />
-            <Legend />
-            <Line type="monotone" dataKey="value" stroke="#8884D8" />
-          </LineChart>
-        );
-      default:
-        return <div className="text-red-500">Select a graph type</div>;
-    }
+    return (
+      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+        <div className="bg-white p-6 rounded-lg max-w-4xl w-full relative">
+          <button
+            onClick={() => setIsGraphModalOpen(false)}
+            className="absolute top-2 right-2 text-gray-600 hover:text-gray-900"
+          >
+            ×
+          </button>
+          <h2 className="text-xl font-bold mb-4">Data Visualization</h2>
+          <div ref={graphRef}>
+            <EnhancedCharts
+              data={selectedData}
+              chartType={graphType}
+            />
+          </div>
+          <div className="flex justify-center mt-4">
+            <button
+              onClick={exportGraphToPNG}
+              className="flex items-center gap-2 px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
+            >
+              <Download size={16} />
+              Export Graph
+            </button>
+          </div>
+        </div>
+      </div>
+    );
   };
 
   // Formula suggestions UI
@@ -603,6 +652,7 @@ useEffect(() => {
 
   return (
     <div className="relative">
+      {isLoading && <LoadingSpinner />}
       {renderFormulaSuggestions()}
       
       <header>
@@ -625,29 +675,9 @@ useEffect(() => {
         />
       </header>
 
-      {isGraphModalOpen && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white p-6 rounded-lg max-w-4xl w-full relative">
-            <button
-              onClick={() => setIsGraphModalOpen(false)}
-              className="absolute top-2 right-2 text-gray-600 hover:text-gray-900"
-            >
-              ×
-            </button>
-            <h2 className="text-xl font-bold mb-4">Data Visualization</h2>
-            <div ref={graphRef}>{renderGraph()}</div>
-            <div className="flex justify-center mt-4">
-              <button
-                onClick={exportGraphToPNG}
-                className="flex items-center gap-2 px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
-              >
-                <Download size={16} />
-                Export Graph
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      {renderGraphModal()}
+
+
 
       
 

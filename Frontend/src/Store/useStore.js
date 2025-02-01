@@ -2,8 +2,112 @@ import { create } from 'zustand';
 import axios from 'axios';
 import { persist } from 'zustand/middleware';
 import debounce from 'lodash/debounce';
+import { useNavigate } from 'react-router-dom';
 
 
+class SparseMatrix {
+  constructor() {
+    this.data = new Map();
+  }
+
+  // Get value at position
+  get(row, col) {
+    return this.data.get(`${row},${col}`) || '';
+  }
+
+  // Set value at position
+  set(row, col, value) {
+    if (value === '' || value === null || value === undefined) {
+      this.data.delete(`${row},${col}`);
+    } else {
+      this.data.set(`${row},${col}`, value);
+    }
+  }
+
+  // Get all non-empty cells
+  getNonEmptyCells() {
+    return Array.from(this.data.entries()).map(([key, value]) => {
+      const [row, col] = key.split(',').map(Number);
+      return { row, col, value };
+    });
+  }
+
+  // Convert range to array for formulas
+  getRange(startRow, startCol, endRow, endCol) {
+    const result = [];
+    for (let i = startRow; i <= endRow; i++) {
+      const row = [];
+      for (let j = startCol; j <= endCol; j++) {
+        row.push(this.get(i, j));
+      }
+      result.push(row);
+    }
+    return result;
+  }
+
+  // Clear all data
+  clear() {
+    this.data.clear();
+  }
+
+  // Import data from 2D array
+  importFromArray(array) {
+    this.clear();
+    array.forEach((row, i) => {
+      row.forEach((value, j) => {
+        if (value !== '') {
+          this.set(i, j, value);
+        }
+      });
+    });
+  }
+
+  // Export to 2D array for rendering
+  exportToArray(rows, cols) {
+    const result = Array(rows).fill().map(() => Array(cols).fill(''));
+    this.data.forEach((value, key) => {
+      const [row, col] = key.split(',').map(Number);
+      if (row < rows && col < cols) {
+        result[row][col] = value;
+      }
+    });
+    return result;
+  }
+}
+
+// Chunk management for handling large datasets
+class ChunkManager {
+  constructor(chunkSize = 100) {
+    this.chunks = new Map();
+    this.chunkSize = chunkSize;
+  }
+
+  getChunkKey(row, col) {
+    const chunkRow = Math.floor(row / this.chunkSize);
+    const chunkCol = Math.floor(col / this.chunkSize);
+    return `${chunkRow},${chunkCol}`;
+  }
+
+  getOrCreateChunk(chunkKey) {
+    if (!this.chunks.has(chunkKey)) {
+      this.chunks.set(chunkKey, new SparseMatrix());
+    }
+    return this.chunks.get(chunkKey);
+  }
+
+  get(row, col) {
+    const chunkKey = this.getChunkKey(row, col);
+    const chunk = this.chunks.get(chunkKey);
+    if (!chunk) return '';
+    return chunk.get(row % this.chunkSize, col % this.chunkSize);
+  }
+
+  set(row, col, value) {
+    const chunkKey = this.getChunkKey(row, col);
+    const chunk = this.getOrCreateChunk(chunkKey);
+    chunk.set(row % this.chunkSize, col % this.chunkSize, value);
+  }
+}
 
 
 // Auth store remains the same
@@ -125,6 +229,8 @@ export const useSpreadsheetStore = create(
       COLS: 10,
       data: Array(100).fill().map(() => Array(10).fill('')),
       setData: (data) => set({ data }),
+      isLoading: false,
+      setIsLoading: (state) => set({ isLoading: state }),
       localUpdates: new Map(), // Track cells being edited locally
 
       setROWS: (newROWS) => {
@@ -187,7 +293,7 @@ export const useSpreadsheetStore = create(
           setTimeout(() => {
             localUpdates.delete(cellKey);
             set({ localUpdates });
-          }, 50); // Adjust this delay as needed
+          }, 5000); // Adjust this delay as needed
         }
       },
 
@@ -196,7 +302,7 @@ export const useSpreadsheetStore = create(
         const { user } = useAuthStore.getState();
         const { sendUpdate } = useWebSocketStore.getState();
         sendUpdate(row, col, value, user?.google_id);
-      }, 900), // Adjust debounce delay as needed
+      }, 1000), // Adjust debounce delay as needed
 
       undo: () => {
         const { undoStack, data } = get();
@@ -246,6 +352,55 @@ export const useSpreadsheetStore = create(
         });
       },
 
+          // In useSpreadsheetStore
+      renameFile: async (fileId, newFileName) => {
+      try {
+        const { user } = useAuthStore.getState();
+        // console.log("file id =>",fileId)
+        await axios.post(
+          `${import.meta.env.VITE_PUBLIC_API_URL}/file/rename`,
+          { file_Old_name: fileId, fileNewName: newFileName },
+          { withCredentials: true }
+        );
+        return await get().LoadAdminData(); // Refresh data after rename
+      } catch (error) {
+        console.error('Error renaming file:', error);
+        throw error;
+      }
+      },
+
+      // In useSpreadsheetStore actions
+    createFile: async (fileName, users) => {
+      try {
+        const { LoadFile } = useSpreadsheetStore.getState();
+        const { user } = useAuthStore.getState();
+        const response = await axios.post(
+          `${import.meta.env.VITE_PUBLIC_API_URL}/newfile`,
+          {
+            fileNamebyUser: fileName,
+            UserPermissions: users
+          },
+          { withCredentials: true }
+        );
+        
+        // Add new file to local state
+        set(state => ({
+          data: [...state.data, response.data.newFile]
+        }));
+
+
+
+        console.log("file nayi",response.data.newFile.fileId)
+       window.location.href = `${import.meta.env.VITE_FRONTEND_URL}/file/${response.data.newFile.fileId}`;
+        return response.data
+
+         // Refresh data after rename;
+      } catch (error) {
+        console.error('File creation failed:', error);
+        throw error;
+      }
+    },
+
       resetData: () => {
         set({
           data: Array(get().ROWS).fill().map(() => Array(get().COLS).fill('')),
@@ -261,54 +416,66 @@ export const useSpreadsheetStore = create(
           localUpdates: new Map()
         });
       },
-      LoadFile: async (FileLink, navigate) => {
-        const {initializeWebSocket} = useWebSocketStore.getState();
-        const {setfileUrl,fileUrl,setfileUserName,fileUserName} = useAuthStore.getState();
-        if(fileUrl){
-          setfileUrl( FileLink );
-          await initializeWebSocket();
-        }   
-         //state change
-        try {
-          const { importData } = useSpreadsheetStore.getState();
-            const response = await axios.get(
-                `${import.meta.env.VITE_PUBLIC_API_URL}/file/${FileLink}`,
-                { withCredentials: true, responseType: 'text' }
-            );
-            const name = await axios.get(
-              `${import.meta.env.VITE_PUBLIC_API_URL}/file/${FileLink}/name`,
-              { withCredentials: true, responseType: 'text' }
-          );
-      
-          const csvText = response.data;
-          //console.log(csvText.permission)
 
-            if (csvText=== "denied") {
-              return navigate('/permission_denied');
-            }
-            
-            const myFilename = JSON.stringify(name.data);
-            setfileUserName(myFilename.fileNameForUser); // Assuming name.data contains a proper filename string
-            console.log("Setting name:", myFilename);
-            
-            
-            //onsole.log("CSV Text:", csvText);
-            
+LoadFile: async (FileLink, navigate) => {
+  const { setIsLoading } = get();
+  const { initializeWebSocket, disconnect } = useWebSocketStore.getState();
+  const { setfileUrl, fileUrl, setfileUserName } = useAuthStore.getState();
+
+  setIsLoading(true);
+
+  if (fileUrl) {
+    setfileUrl(FileLink);
+    await disconnect();
+    await initializeWebSocket();
+  }
+
+  try {
+    const { importData } = useSpreadsheetStore.getState();
+
+    // Fetch both file content and file name in one request
+    const response = await axios.get(
+      `${import.meta.env.VITE_PUBLIC_API_URL}/file/${FileLink}`,
+      { withCredentials: true }
+    );
+
+    if (response.data.error === "denied") {
+      setIsLoading(false);
+      return navigate("/permission_denied");
+    }
+
+    const { fileNameForUser, fileContent } = response.data;
+    console.log("username",fileNameForUser)
+
+    setfileUserName(fileNameForUser);
+
+    if (!fileContent) {
+      throw new Error("No data received from the server");
+    }
+
+    let rows;
     
-            if (!csvText) {
-                throw new Error('No data received from the server');
-            }
-    
-            const rows = csvText.split('\n').map(row =>
-                row.split(',').map(cell => cell.replace(/^"|"$/g, ''))
-            );
-    
-            importData(rows);
-        } catch (error) {
-            console.error('Error loading file:', error);
-            navigate('/error'); // Redirect to an error page
-        }
-    },
+    // Check if fileContent is an array (already parsed)
+    if (Array.isArray(fileContent)) {
+      rows = fileContent;
+    } else if (typeof fileContent === "string") {
+      rows = fileContent.split("\n").map((row) =>
+        row.split(",").map((cell) => cell.replace(/^"|"$/g, ""))
+      );
+    } else {
+      throw new Error("Unexpected file content format");
+    }
+
+    importData(rows);
+  } catch (error) {
+    console.error("Error loading file:", error);
+    navigate("/error");
+  } finally {
+    setIsLoading(false);
+  }
+},
+
+      
     LoadAdminData: async() =>{
       const res = await axios.get(`${import.meta.env.VITE_PUBLIC_API_URL}/admin`,
         {withCredentials:true}
@@ -338,6 +505,7 @@ AddEmailToFile: async (fileName, email, permission) => {
 },
 
 UpdateUserPermission: async (fileName, email, permission) => {
+  console.log(fileName)
   try {
     await axios.put(
       `${import.meta.env.VITE_PUBLIC_API_URL}/admin/files/${fileName}/users/${email}`,
@@ -353,6 +521,71 @@ UpdateUserPermission: async (fileName, email, permission) => {
     throw error;
   }
 },
+
+ generateToken: async (time, fileName) => {
+  try {
+    console.log("generate token got hit")
+    const response = await axios.post(
+      `${import.meta.env.VITE_PUBLIC_API_URL}/admin/generateToken`,
+      { time, fileName }, // Corrected: Move `time` and `fileName` inside the request body
+      { withCredentials: true }
+    );
+    console.log(time,fileName)
+    console.log("token =>",response.data)
+    return response.data;
+  } catch (error) {
+    console.error("Token generation failed:", error);
+    throw error;
+  }
+},
+LoadFileByToken: async(fileURL,token,navigate) =>{
+  const { importData } = useSpreadsheetStore.getState();
+
+  try {
+    const res = await axios.get(
+       `${import.meta.env.VITE_PUBLIC_API_URL}/token/file/${fileURL}/${token}
+      `)
+      console.log("data by res by token =>",res.data)
+      const csvText = res.data;  
+      if (!csvText) {
+        return navigate('/token_expired_or_invalid')
+    }
+
+
+    const rows = csvText.split('\n').map(row =>
+        row.split(',').map(cell => cell.replace(/^"|"$/g, ''))
+    );
+
+    importData(rows);      
+  } catch (error) {
+    return navigate('/token_expired_or_invalid')
+  }
+},// In useSpreadsheetStore actions
+deleteFile: async (fileName) => {
+  try {
+    await axios.delete(
+      `${import.meta.env.VITE_PUBLIC_API_URL}/admin/files/${encodeURIComponent(fileName)}`,
+      { withCredentials: true }
+    );
+    return await get().LoadAdminData(); // Refresh data
+  } catch (error) {
+    console.error('Error deleting file:', error);
+    throw error;
+  }
+},
+
+deleteUserPermission: async (fileName, email) => {
+  try {
+    await axios.delete(
+      `${import.meta.env.VITE_PUBLIC_API_URL}/admin/files/${encodeURIComponent(fileName)}/users/${encodeURIComponent(email)}`,
+      { withCredentials: true }
+    );
+    return await get().LoadAdminData(); // Refresh data
+  } catch (error) {
+    console.error('Error deleting user:', error);
+    throw error;
+  }
+},
     
     }),
     {
@@ -365,8 +598,6 @@ UpdateUserPermission: async (fileName, email, permission) => {
         redoStack: persistedState.redoStack || [],
       })
         }
-      
-    
   )
 );
 
@@ -382,20 +613,23 @@ export const useWebSocketStore = create(
       initializeWebSocket: async() => {
         try {
           const fileUrl = useAuthStore.getState().fileUrl;
-          const {setWritePermission,writePermission} = useAuthStore.getState()
+          const {setWritePermission,writePermission,user} = useAuthStore.getState()
 
           // Ensure fileUrl is valid before making a request
-          if (!fileUrl) {
+          if (!fileUrl && !user) {
             console.log("file url",fileUrl)
             console.warn("No file URL found");
-            // return;
+
+            return;
           }
+         
       
           // Check write permission before initializing WebSocket
           const response = await axios.get(
             `${import.meta.env.VITE_PUBLIC_API_URL}/file/${fileUrl}/writeCheck`,
             { withCredentials: true, responseType: 'json' }
           );
+          console.log("file url from web socket ",response.data)
       
           if (!response.data.permission) {
             console.warn("User does not have write permission.");

@@ -30,11 +30,11 @@ docker --version || { echo "Docker installation failed!"; exit 1; }
 docker run -d -p 6379:6379 redis 
 docker run --name postgres -e POSTGRES_USER=postgres -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=postgres -p 5432:5432 -d postgres
 
-docker run -d \
-  --name zookeeper \
-  -p 2181:2181 \
-  -e ZOOKEEPER_CLIENT_PORT=2181 \
-  confluentinc/cp-zookeeper:7.0.1
+# docker run -d \
+#   --name zookeeper \
+#   -p 2181:2181 \
+#   -e ZOOKEEPER_CLIENT_PORT=2181 \
+#   confluentinc/cp-zookeeper:7.0.1
 
 # docker run -d \
 #   --name kafka \

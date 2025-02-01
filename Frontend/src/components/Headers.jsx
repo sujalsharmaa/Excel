@@ -1,19 +1,18 @@
 import React from 'react';
-import { UserProfile } from './UserProfile.jsx';
 import {
   FileKey, FileText, ZoomOut, ZoomIn, Bold, Italic, Underline, 
   AlignLeft, AlignCenter, AlignRight, AlignJustify, BookOpen, FileCog,
   Download, Table, Upload, BarChart2, PieChart, LineChart as LineChartIcon,
-  LogIn, FileX2, Menu, Type, Plus, Sliders,Undo, Redo 
+  LogIn, FileX2, Menu, Type, Plus, Sliders, Undo, Redo,
+  AreaChart, ChartScatter, Radar, Layout, RadioTower, TrendingUp,
+  ChevronDown
 } from 'lucide-react';
 
-
-import { useAuthStore } from '../Store/useStore.js';
-import { AuthGuard } from './AuthGuard.jsx';
-import NewFileButton from './NewFileButton.jsx';
-import { useSpreadsheetStore } from '../Store/useStore.js';
+import { useAuthStore, useSpreadsheetStore } from '../Store/useStore';
+import { AuthGuard } from './AuthGuard';
+import NewFileButton from './NewFileButton';
 import { useNavigate } from 'react-router-dom';
-
+import { UserProfile } from './UserProfile';
 const fonts = [
   "Roboto",
   "Open Sans",
@@ -119,27 +118,9 @@ const fonts = [
 ];
 
 
-const applyKeyAction = (keyType) => {
-  const activeElement = document.activeElement;
-
-  if (activeElement && activeElement.tagName === 'TEXTAREA') {
-    const cursorPosition = activeElement.selectionStart;
-    const value = activeElement.value;
-
-    if (keyType === 'enter') {
-      activeElement.value =
-        value.slice(0, cursorPosition) + '\n' + value.slice(cursorPosition);
-    } else if (keyType === 'tab') {
-      activeElement.value =
-        value.slice(0, cursorPosition) + '\t' + value.slice(cursorPosition);
-    }
-    activeElement.selectionStart = activeElement.selectionEnd = cursorPosition + 1;
-  }
-};
-
-
-
 function Headers(props) {
+  const [showChartMenu, setShowChartMenu] = React.useState(false);
+  const chartMenuRef = React.useRef(null);
 
   const undo = useSpreadsheetStore((state) => state.undo);
   const redo = useSpreadsheetStore((state) => state.redo);
@@ -148,7 +129,8 @@ function Headers(props) {
   const { isAuthenticated } = useAuthStore();
   const { resetData } = useSpreadsheetStore();
   const navigate = useNavigate();
-  const {fileUserName} = useAuthStore(); 
+  const { fileUserName } = useAuthStore();
+
   const {
     handleDataSelection,
     exportToCSV,
@@ -162,6 +144,32 @@ function Headers(props) {
     onTextAlignment,
   } = props;
 
+  // Chart types configuration
+  const chartTypes = [
+    { id: 'bar', label: 'Bar Chart', Icon: BarChart2 },
+    { id: 'stackedBar', label: 'Stacked Bar', Icon: Layout },
+    { id: 'line', label: 'Line Chart', Icon: LineChartIcon },
+    { id: 'multiLine', label: 'Multi-Line Chart', Icon: TrendingUp },
+    { id: 'area', label: 'Area Chart', Icon: AreaChart },
+    { id: 'pie', label: 'Pie Chart', Icon: PieChart },
+    { id: 'scatter', label: 'Scatter Plot', Icon: ChartScatter },
+    { id: 'radar', label: 'Radar Chart', Icon: Radar },
+    { id: 'composed', label: 'Composed Chart', Icon: Layout },
+    { id: 'radialBar', label: 'Radial Bar', Icon: RadioTower },
+  ];
+
+  // Close chart menu when clicking outside
+  React.useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (chartMenuRef.current && !chartMenuRef.current.contains(event.target)) {
+        setShowChartMenu(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
   return (
     <header className="w-full bg-gray-900 text-white shadow-xl">
       {/* Top Bar */}
@@ -169,23 +177,10 @@ function Headers(props) {
         {/* Left Section - File Operations */}
         <div className="flex items-center gap-3">
           <NewFileButton />
-          <button
-            onClick={undo}
-            disabled={!undoStack.length}
-            className="flex items-center gap-1 px-3 py-1.5 rounded-md hover:bg-gray-800 disabled:opacity-50"
-          >
-            <Undo />
-          </button>
-          <button
-            onClick={redo}
-            disabled={!redoStack.length}
-            className="flex items-center gap-1 px-3 py-1.5 rounded-md hover:bg-gray-800 disabled:opacity-50"
-          >
 
-            <Redo />
-          </button>
+          {/* File Menu */}
           <div className="relative group">
-            <button className="flex items-center gap-1 px-3 py-1.5 rounded-md hover:bg-gray-800">
+            <button className="flex items-center gap-1 px-3 py-1.5 rounded-md hover:bg-gray-800 bg-red-600">
               <Menu size={18} />
               <span>File</span>
             </button>
@@ -200,7 +195,6 @@ function Headers(props) {
                   onChange={importCSV}
                   className="hidden"
                 />
-
               </label>
               <button
                 onClick={exportToCSV}
@@ -225,27 +219,28 @@ function Headers(props) {
               </button>
             </div>
           </div>
-          <div className="text-sm text-gray-300 ml-2">
-            Current File: <span className="font-mono">{<AuthGuard children={fileUserName} />}</span>
+          <div className="text-sm text-white ml-2 bg-amber-500 p-2 rounded-md">
+            Current File: <span className="font-mono">{fileUserName}</span>
           </div>
         </div>
 
         {/* Right Section - User & Zoom */}
         <div className="flex items-center gap-4">
-          <div className="flex items-center bg-gray-800 rounded-lg p-1">
-            <button
-              onClick={() => onZoom('out')}
-              className="p-1.5 hover:bg-gray-700 rounded-md"
-            >
-              <ZoomOut size={18} />
-            </button>
-            <span className="text-sm mx-2">100%</span>
-            <button
-              onClick={() => onZoom('in')}
-              className="p-1.5 hover:bg-gray-700 rounded-md"
-            >
-              <ZoomIn size={18} />
-            </button>
+          <div className="flex items-center bg-sky-600 rounded-lg p-1">
+          <button
+            onClick={undo}
+            disabled={!undoStack.length}
+            className="flex items-center gap-1 px-3 py-1.5 rounded-md hover:bg-gray-800"
+          >
+            <Undo size={18} />
+          </button>
+          <button
+            onClick={redo}
+            disabled={!redoStack.length}
+            className="flex items-center gap-1 px-3 py-1.5 rounded-md hover:bg-gray-800 "
+          >
+            <Redo size={18} />
+          </button>
           </div>
           <AuthGuard children={<UserProfile />} />
         </div>
@@ -255,29 +250,35 @@ function Headers(props) {
       <div className="flex items-center justify-between px-4 py-2">
         {/* Chart Controls */}
         <div className="flex items-center gap-2">
-          <div className="flex bg-gray-800 rounded-lg p-1">
+          {/* Chart Type Selection */}
+          <div className="relative" ref={chartMenuRef}>
             <button
-              onClick={() => setGraphType("bar")}
-              className="p-2 hover:bg-gray-700 rounded-md"
-              title="Bar Chart"
+              onClick={() => setShowChartMenu(!showChartMenu)}
+              className="flex items-center gap-2 px-3 py-1.5 bg-violet-800 hover:bg-gray-700 rounded-md"
             >
-              <BarChart2 size={18} />
+              <BarChart2 size={16} />
+              Chart Type
+              <ChevronDown size={14} className={`transform transition-transform ${showChartMenu ? 'rotate-180' : ''}`} />
             </button>
-            <button
-              onClick={() => setGraphType("pie")}
-              className="p-2 hover:bg-gray-700 rounded-md"
-              title="Pie Chart"
-            >
-              <PieChart size={18} />
-            </button>
-            <button
-              onClick={() => setGraphType("line")}
-              className="p-2 hover:bg-gray-700 rounded-md"
-              title="Line Chart"
-            >
-              <LineChartIcon size={18} />
-            </button>
+            {showChartMenu && (
+              <div className="absolute top-full left-0 mt-1 bg-gray-800 rounded-lg shadow-xl p-2 z-50 grid grid-cols-2 gap-1 min-w-[300px]">
+                {chartTypes.map(({ id, label, Icon }) => (
+                  <button
+                    key={id}
+                    onClick={() => {
+                      setGraphType(id);
+                      setShowChartMenu(false);
+                    }}
+                    className="flex items-center gap-2 px-3 py-2 rounded-md hover:bg-gray-700 w-full"
+                  >
+                    <Icon size={16} />
+                    <span className="text-sm">{label}</span>
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
+          
           <button
             onClick={handleDataSelection}
             className="flex items-center gap-2 px-3 py-1.5 bg-blue-600 hover:bg-blue-500 rounded-md"
@@ -289,12 +290,13 @@ function Headers(props) {
 
         {/* Formatting Tools */}
         <div className="flex items-center gap-4">
-          <div className="flex items-center bg-gray-800 rounded-lg p-1">
+          {/* Font Controls */}
+          <div className="flex items-center bg-teal-600 rounded-lg p-1">
             <select
-              className="bg-gray-800 px-2 py-1 text-sm rounded-md hover:bg-gray-700"
+              className="bg-teal-700 px-2 py-1 text-sm rounded-md hover:bg-gray-700"
               onChange={(e) => onFontChange(e.target.value)}
             >
-              {fonts.slice(0, 50).map((font, index) => (
+              {fonts.map((font, index) => (
                 <option key={index} value={font} style={{ fontFamily: font }}>
                   {font}
                 </option>
@@ -316,7 +318,8 @@ function Headers(props) {
             </div>
           </div>
 
-          <div className="flex items-center gap-1 bg-gray-800 rounded-lg p-1">
+          {/* Text Formatting */}
+          <div className="flex items-center gap-1 bg-purple-600 rounded-lg p-1">
             <button
               onClick={() => onTextFormat("bold")}
               className="p-2 hover:bg-gray-700 rounded-md"
@@ -340,7 +343,8 @@ function Headers(props) {
             </button>
           </div>
 
-          <div className="flex items-center gap-1 bg-gray-800 rounded-lg p-1">
+          {/* Text Alignment */}
+          <div className="flex items-center gap-1 bg-orange-600 rounded-lg p-1">
             {['left', 'center', 'right', 'justify'].map((align) => (
               <button
                 key={align}
@@ -356,25 +360,6 @@ function Headers(props) {
             ))}
           </div>
         </div>
-      </div>
-            {/* Adding Enter and Tab buttons */}
-            <div className="flex items-center gap-4">
-        {/* <div className="flex items-center gap-1 bg-gray-800 rounded-lg p-1">
-          <button
-            onClick={() => applyKeyAction('enter')}
-            className="p-2 hover:bg-gray-700 rounded-md"
-            title="Enter Key"
-          >
-            <CornerDownLeft size={16} />
-          </button>
-          <button
-            onClick={() => applyKeyAction('tab')}
-            className="p-2 hover:bg-gray-700 rounded-md"
-            title="Tab Key"
-          >
-            <ArrowRightToLine size={16} />
-          </button>
-        </div> */}
       </div>
     </header>
   );
