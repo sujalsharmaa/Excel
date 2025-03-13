@@ -1,33 +1,31 @@
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { useSpreadsheetStore } from '../Store/useStore.js';
-import ExcelClone from './ExcelClone.jsx';
+import { useSpreadsheetStore,useAuthStore } from '../Store/useStore.js';
+import ExcelClone from './Sheetwise.jsx';
 
 export const FileViewerbyToken = () => {
-  const { fileURL,token } = useParams();
+  const { FILEURL,token } = useParams();
   const navigate = useNavigate();
-
+  const {setToken,setIsLoading} = useAuthStore()
   const { LoadFileByToken } = useSpreadsheetStore();
-  const [loading, setLoading] = useState(true);
  
-
 
   useEffect(() => {
     const fetchFile = async () => {
-        if (token && fileURL) {
+        if (token && FILEURL) {
             try {
-                await LoadFileByToken(fileURL,token,navigate);
+                setToken(token)
+                await LoadFileByToken(FILEURL,token,navigate);
             } catch (error) {
-                //navigate('/token_expired_or_invalid')
                 console.log('Error loading file:',error.message);
             } finally {
-                setLoading(false);
+              setIsLoading(false);
             }
 
     };
     }
     fetchFile();
-}, [fileURL,token]);
+}, [FILEURL,token]);
 
 
 

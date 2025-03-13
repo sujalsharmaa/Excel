@@ -1,14 +1,21 @@
 import React from 'react';
 import { HomeIcon, ArrowLeft } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import { useAuthStore } from '../Store/useStore.js';
 
 export const NotFound=()=> {
+  const navigate = useNavigate()
+    const { logout, isLoading } = useAuthStore();
   const goBack = () => {
-    window.history.back();
+    navigate(-1)
   };
 
   const goHome = () => {
-    window.location.href = '/';
+    navigate("/admin")
+  };
+  const handleLogout = async () => {
+    await logout(navigate); // Pass the navigate function to logout
+    navigate("/")
   };
 
   return (
@@ -30,8 +37,8 @@ export const NotFound=()=> {
           
           {/* Illustration */}
           <div className="flex justify-center my-8">
-            <div className="relative w-64 h-64">
-              <div className="absolute inset-0 bg-blue-100 rounded-full opacity-50 animate-ping" />
+            <div className="relative w-40 h-40">
+              <div className="absolute inset-0 bg-red-100 rounded-full opacity-50 animate-ping" />
               <div className="relative flex items-center justify-center">
                 <span className="text-8xl">🚀</span>
               </div>
@@ -54,6 +61,13 @@ export const NotFound=()=> {
             >
               <HomeIcon size={20} />
               Home Page
+            </button>
+
+            <button
+              onClick={handleLogout}
+              className="flex items-center px-6 py-3 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors duration-200 gap-2"
+            >
+              Logout
             </button>
           </div>
         </div>

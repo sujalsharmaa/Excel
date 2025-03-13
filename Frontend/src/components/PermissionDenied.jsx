@@ -14,8 +14,13 @@ const PermissionDenied = () => {
         </p>
         <button
           onClick={() => navigate('/')}
-          className="bg-gradient-to-r from-red-500 via-pink-500 to-purple-500 hover:scale-105 text-white font-semibold px-6 py-3 rounded-lg shadow-md transition-transform">
+          className="mx-2 bg-gradient-to-r from-red-500 via-pink-500 to-purple-500 hover:scale-105 text-white font-semibold px-6 py-3 rounded-lg shadow-md transition-transform">
           Home
+        </button>
+        <button
+          onClick={() => navigate(-1)}
+          className="bg-gradient-to-r from-green-700 via-green-500 to-teal-500 hover:scale-105 text-white font-semibold px-6 py-3 rounded-lg shadow-md transition-transform">
+          Retry
         </button>
       </div>
     </div>

@@ -1,5 +1,6 @@
-import { useState, useMemo, useEffect, useCallback } from "react";
+import { useState, useMemo, useEffect, useCallback, useRef } from "react";
 import { Link } from "react-router-dom";
+import "../../../src/index.css";
 import {
   flexRender,
   getCoreRowModel,
@@ -8,73 +9,168 @@ import {
   getSortedRowModel,
   useReactTable,
 } from "@tanstack/react-table";
-import { Dialog } from "@headlessui/react";
-import { Search, ChevronLeft, ChevronRight, Copy, X, Edit, Save, Trash } from "react-feather";
 import { useSpreadsheetStore } from "../../Store/useStore.js";
 import { useAuthStore } from "../../Store/useStore.js";
 import NewFileButton from "../NewFileButton.jsx";
+import { Search, Copy, Pencil, Save, Trash2, Share2, X, ArrowBigLeft } from "lucide-react";
 
-const Spinner = ({ color = "text-purple-500", size = "h-5 w-5" }) => (
-  <svg
-    className={`animate-spin ${color} ${size}`}
-    xmlns="http://www.w3.org/2000/svg"
-    fill="none"
-    viewBox="0 0 24 24"
-  >
-    <circle
-      className="opacity-25"
-      cx="12"
-      cy="12"
-      r="10"
-      stroke="currentColor"
-      strokeWidth="4"
-    ></circle>
-    <path
-      className="opacity-75"
-      fill="currentColor"
-      d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-    ></path>
-  </svg>
+// Import shadcn components
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Separator } from "@/components/ui/separator";
+import toast from "react-hot-toast";
+import { useNavigate } from "react-router-dom";
+
+//cool loading spinner
+
+export const LoadingSpinner = () => (
+  <div className="flex h-screen items-center justify-center bg-gray-900">
+    <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
+  </div>
 );
 
 const AddEmailCell = ({ handleAddEmail }) => {
   const [localEmail, setLocalEmail] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const { EmailArray } = useSpreadsheetStore();
+  const suggestionRef = useRef(null);
+  const inputRef = useRef(null);
 
-  const handleSubmit = (e) => {
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (
+        suggestionRef.current && 
+        !suggestionRef.current.contains(event.target) &&
+        inputRef.current && 
+        !inputRef.current.contains(event.target)
+      ) {
+        setShowSuggestions(false);
+      }
+    };
+
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, []);
+
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    if (localEmail) {
-      handleAddEmail(localEmail);
-      setLocalEmail("");
+    if (localEmail && !isSubmitting) {
+      try {
+        setIsSubmitting(true);
+        await handleAddEmail(localEmail);
+        setLocalEmail("");
+        toast.success(`Added ${localEmail} to the file`);
+      } catch (error) {
+        toast.error(`Failed to add email: Email does not Exist on our Platform`);
+      } finally {
+        setIsSubmitting(false);
+      }
     }
   };
 
+  const emailSuggestions = [...EmailArray]
+    .filter((email) => email.toLowerCase().includes(localEmail.toLowerCase()))
+    .slice(0, 2); // Show only first 2 suggestions
+
   return (
-    <form onSubmit={handleSubmit} className="flex gap-2">
-      <input
-        type="email"
-        placeholder="Add email"
-        className="border-2 border-indigo-500 rounded-lg px-3 py-1 text-sm w-40 focus:outline-none focus:border-purple-400 focus:ring-1 focus:ring-purple-400 transition-colors"
-        value={localEmail}
-        onChange={(e) => setLocalEmail(e.target.value)}
-      />
-      <button
-        type="submit"
-        className="bg-gradient-to-r from-purple-500 to-blue-500 text-white px-4 py-1 rounded-lg text-sm font-medium hover:from-purple-600 hover:to-blue-600 transition-colors shadow-sm"
-      >
-        Add
-      </button>
-    </form>
+    <div className="relative">
+      <form onSubmit={handleSubmit} className="flex items-center gap-2">
+        <Input
+          ref={inputRef}
+          type="email"
+          placeholder="Add email"
+          className="w-40 bg-gray-800 text-white"
+          value={localEmail}
+          onChange={(e) => {
+            setLocalEmail(e.target.value);
+            setShowSuggestions(e.target.value.length > 0); // Show suggestions when user types
+          }}
+          disabled={isSubmitting}
+          onFocus={() => {
+            if (localEmail.length > 0) {
+              setShowSuggestions(true);
+            }
+          }}
+        />
+        <Button type="submit" size="sm" disabled={isSubmitting}
+        className='bg-teal-600'
+        >
+          {isSubmitting ? (
+            <div className="h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+          ) : (
+            "Add"
+          )}
+        </Button>
+      </form>
+
+      {/* Suggestion Dropdown */}
+      {showSuggestions && emailSuggestions.length > 0 && (
+        <ul
+          ref={suggestionRef}
+          className="relative mt-1 w-fit bg-gray-800 text-white border border-gray-700 rounded-md shadow-md z-50"
+          style={{ zIndex: 1600 }}
+        >
+          {emailSuggestions.map((email) => (
+            <li
+              key={email}
+              className="p-2 cursor-pointer hover:bg-gray-700"
+              onClick={() => {
+                setLocalEmail(email);
+                setShowSuggestions(false); // Hide suggestions after selection
+              }}
+            >
+              {email}
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
   );
 };
 
+
 const AdminPanel = () => {
+  const navigate = useNavigate();
   const [generatingToken, setGeneratingToken] = useState(null);
   const [deletingFile, setDeletingFile] = useState(null);
   const [deletingUser, setDeletingUser] = useState({ fileName: null, email: null });
   const [renamingFile, setRenamingFile] = useState(null);
-  const { renameFile, deleteUserPermission, deleteFile } = useSpreadsheetStore();
-  const { isLoading, setIsLoading } = useAuthStore();
-  const { LoadAdminData, UpdateUserPermission, AddEmailToFile, generateToken } = useSpreadsheetStore();
   const [editingRowId, setEditingRowId] = useState(null);
   const [newFileName, setNewFileName] = useState("");
   const [data, setData] = useState([]);
@@ -84,6 +180,53 @@ const AdminPanel = () => {
   const [selectedFileIndex, setSelectedFileIndex] = useState(-1);
   const [tokenExpiryTimes, setTokenExpiryTimes] = useState({});
   const [error, setError] = useState(null);
+  const [fileToDelete, setFileToDelete] = useState(null);
+const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+
+
+  const { renameFile, deleteUserPermission, deleteFile, sendEmailFileLink } = useSpreadsheetStore();
+  const { isLoading, setIsLoading,user } = useAuthStore();
+  const { LoadAdminData, UpdateUserPermission, AddEmailToFile, generateToken } = useSpreadsheetStore();
+
+  const gradients = [
+   "linear-gradient(135deg, #FF0000 0%, #FF7F00 100%)",  // Red to Orange
+    "linear-gradient(135deg, #FF7F00 0%, #FFFF00 100%)",  // Orange to Yellow
+    "linear-gradient(135deg, #FFFF00 0%, #00FF00 100%)",  // Yellow to Green
+    "linear-gradient(135deg, #00FF00 0%, #0000FF 100%)",  // Green to Blue
+    "linear-gradient(135deg, #0000FF 0%, #4B0082 100%)",  // Blue to Indigo
+    "linear-gradient(135deg, #4B0082 0%, #9400D3 100%)",  // Indigo to Violet
+    "linear-gradient(135deg, #9400D3 0%, #EE82EE 100%)", // Violet to Violet(Light)
+    "linear-gradient(135deg, #8A2BE2 0%, #4B0082 100%)", // Violet to Indigo(Dark)
+    "linear-gradient(135deg, #FF6347 0%, #FFD700 100%)", // Tomato to Gold
+    "linear-gradient(135deg, #00CED1 0%, #1E90FF 100%)", // Dark Turquoise to Dodger Blue
+    "linear-gradient(135deg, #8B008B 0%, #DA70D6 100%)", // Dark Magenta to Orchid
+    "linear-gradient(135deg, #32CD32 0%, #98FB98 100%)", // LimeGreen to PaleGreen
+    "linear-gradient(135deg, #FFA500 0%, #FFFFE0 100%)", // Orange to LightYellow
+    "linear-gradient(135deg, #CD5C5C 0%, #F08080 100%)", // IndianRed to LightCoral
+    "linear-gradient(135deg, #708090 0%, #D3D3D3 100%)"  // SlateGray to LightGray
+];
+  
+  const UserProfile = ({ user }) => {
+    const randomGradient = useMemo(() => {
+      return gradients[Math.floor(Math.random() * gradients.length)];
+    }, []);
+  
+    return (
+      <img
+        className="absolute right-1 w-24 h-24 rounded-full"
+        src={user.imageurl}
+        alt="User Profile"
+        style={{
+          borderRadius: "50%",
+          padding: "4px",
+          border: "4px solid transparent",
+          background: `linear-gradient(white, white) padding-box, ${randomGradient} border-box`,
+        
+        }}
+      />
+    );
+  };
+  
 
   const transformBackendData = useCallback((backendData) => {
     if (!backendData || typeof backendData !== "object") return [];
@@ -91,6 +234,8 @@ const AdminPanel = () => {
     return Object.entries(backendData).map(([_, fileData]) => {
       const users = Array.isArray(fileData) ? fileData : [fileData];
       const firstUser = users[0];
+      
+      if (!firstUser) return null; // Skip if no user data
       
       return {
         fileId: firstUser.fileId,
@@ -102,7 +247,7 @@ const AdminPanel = () => {
         lastModified: new Date(firstUser.modified_at).toISOString(),
         token: { value: "", expiresAt: null }
       };
-    });
+    }).filter(Boolean); // Remove any null entries
   }, []);
 
   useEffect(() => {
@@ -124,58 +269,54 @@ const AdminPanel = () => {
   }, [LoadAdminData, setIsLoading, transformBackendData]);
 
   const handleDeleteFile = useCallback(async (fileName) => {
-    if (!window.confirm(`Are you sure you want to delete ${fileName}?`)) return;
-    
     try {
       setDeletingFile(fileName);
       const newData = await deleteFile(fileName);
       setData(transformBackendData(newData));
+      toast.success("File deleted successfully");
+      setIsDeleteDialogOpen(false);
     } catch (error) {
       console.error('Failed to delete file:', error);
-      alert('Failed to delete file');
+      toast.error("Failed to delete file");
     } finally {
       setDeletingFile(null);
+      setFileToDelete(null);
     }
   }, [deleteFile, transformBackendData]);
 
   const handleDeleteUser = useCallback(async (fileName, email) => {
-    if (!window.confirm(`Remove ${email} from ${fileName}?`)) return;
-    
     try {
       setDeletingUser({ fileName, email });
       const newData = await deleteUserPermission(fileName, email);
       setData(transformBackendData(newData));
+      toast.success("User removed successfully");
     } catch (error) {
       console.error('Failed to remove user:', error);
-      alert('Failed to remove user');
+      toast.error("Failed to remove User");
     } finally {
       setDeletingUser({ fileName: null, email: null });
     }
-  }, [deleteUserPermission, transformBackendData]);
+  }, [deleteUserPermission, transformBackendData, toast]);
 
   const handleRenameFile = useCallback(async (fileId, newName) => {
     if (!newName.trim()) {
-      alert('File name cannot be empty');
+toast.error("File Name cannot be Empty")
       return;
     }
 
-    if (fileId === newName) {
-      alert('New name must be different from current name');
-      return;
-    }
-    
     try {
       setRenamingFile(fileId);
       const updatedData = await renameFile(fileId, newName);
       setData(transformBackendData(updatedData));
       setEditingRowId(null);
+toast.success("File renamed successfully")
     } catch (error) {
       console.error('Rename failed:', error);
-      alert(`Renaming failed: ${error.message}`);
+toast.error("Failed to rename file")
     } finally {
       setRenamingFile(null);
     }
-  }, [renameFile, transformBackendData]);
+  }, [renameFile, transformBackendData, toast]);
 
   const handleGenerateToken = useCallback(async (fileIndex) => {
     try {
@@ -190,60 +331,43 @@ const AdminPanel = () => {
         newData[fileIndex] = {
           ...newData[fileIndex],
           token: {
-            value: response.token,
+            value: response.url,
             expiresAt: response.expiresAt
           }
         };
         return newData;
       });
+
+toast.success("Token generated successfully")
     } catch (error) {
       console.error("Token generation failed:", error);
-      alert("Failed to generate token. Please try again.");
+toast.error("Failed to generate Token")
     } finally {
       setGeneratingToken(null);
     }
-  }, [data, tokenExpiryTimes, generateToken]);
-
-  const handlePermissionChange = useCallback(async (fileName, email, newPermission) => {
-    try {
-      const newData = await UpdateUserPermission(fileName, email, newPermission);
-      setData(transformBackendData(newData));
-    } catch (error) {
-      console.error('Failed to update permission:', error);
-      alert('Failed to update permission');
-    }
-  }, [UpdateUserPermission, transformBackendData]);
-
-  const handleAddEmail = useCallback(async (fileName, email) => {
-    if (!email || !email.includes('@')) {
-      alert('Please enter a valid email address');
-      return;
-    }
-
-    try {
-      const newData = await AddEmailToFile(fileName, email, 'Read');
-      setData(transformBackendData(newData));
-    } catch (error) {
-      console.error('Failed to add email:', error);
-      alert('Failed to add email');
-    }
-  }, [AddEmailToFile, transformBackendData]);
+  }, [data, tokenExpiryTimes, generateToken, toast]);
 
   const handleShare = useCallback(async () => {
     if (!shareEmail || !shareEmail.includes('@')) {
-      alert('Please enter a valid email address');
+toast.error("Please Enter a Valid Email")
       return;
     }
-
+  
     try {
-      await handleAddEmail(data[selectedFileIndex].fileName, shareEmail);
+      const fileId = data[selectedFileIndex].fileId;
+      const fileName = data[selectedFileIndex].fileName
+      console.log(data[selectedFileIndex].fileName)
+      await AddEmailToFile(data[selectedFileIndex].fileName, shareEmail, 'Read');
+      await sendEmailFileLink(shareEmail, fileId,fileName);
+      
       setIsShareOpen(false);
       setShareEmail("");
+toast.success("file send successfully")
     } catch (error) {
       console.error('Failed to share file:', error);
-      alert('Failed to share file');
+toast.error("failed to send file")
     }
-  }, [shareEmail, selectedFileIndex, data, handleAddEmail]);
+  }, [shareEmail, selectedFileIndex, data, AddEmailToFile, sendEmailFileLink, toast]);
 
   const columns = useMemo(
     () => [
@@ -255,382 +379,588 @@ const AdminPanel = () => {
           return (
             <div className="flex items-center gap-2">
               {isEditing ? (
-                <>
-                  <input
-                    type="text"
-                    value={newFileName}
-                    onChange={(e) => setNewFileName(e.target.value)}
-                    className="border-2 border-purple-300 rounded-lg px-2 py-1 text-sm w-40 focus:outline-none focus:border-purple-500"
-                    autoFocus
-                  />
-                  <div className="flex gap-1">
-                    <button
-                      onClick={() => {
-                        handleRenameFile(row.original.fileName, newFileName);
-                      }}
-                      className="p-1 text-purple-600 hover:bg-purple-100 rounded-lg transition-colors disabled:opacity-50"
-                      disabled={renamingFile === row.original.fileName}
-                    >
-                      {renamingFile === row.original.fileName ? (
-                        <Spinner color="text-purple-600" size="h-4 w-4" />
-                      ) : (
-                        <Save size={16} />
-                      )}
-                    </button>
-                    <button
-                      onClick={() => setEditingRowId(null)}
-                      className="p-1 text-gray-500 hover:bg-gray-100 rounded-lg transition-colors"
-                    >
-                      <X size={16} />
-                    </button>
+                <div className="flex items-center gap-2">
+                <Input
+                  value={newFileName}
+                  onChange={(e) => {
+                    // Limit input to 50 characters
+                    if (e.target.value.length <= 50) {
+                      setNewFileName(e.target.value);
+                    }
+                  }}
+                  maxLength={50}
+                  className="w-40 bg-gray-700 text-white border-gray-600"
+                  autoFocus
+                />
+                {newFileName.length > 0 && (
+                  <div className="text-xs text-gray-400 mt-1">
+                    {newFileName.length}/50 characters
                   </div>
-                </>
+                )}
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    onClick={() => handleRenameFile(row.original.fileName, newFileName)}
+                    disabled={renamingFile === row.original.fileName}
+                    className="text-gray-300 hover:text-white hover:bg-gray-700"
+                  >
+                    {renamingFile === row.original.fileName ? (
+                      <div className="h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+                    ) : (
+                      <Save className="h-4 w-4" />
+                    )}
+                  </Button>
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    onClick={() => setEditingRowId(null)}
+                    className="text-gray-300 hover:text-white hover:bg-gray-700"
+                  >
+                    <X className="h-4 w-4" />
+                  </Button>
+                </div>
               ) : (
-                <>
+                <div className="flex items-center gap-2">
                   <Link
                     to={`${import.meta.env.VITE_FRONTEND_URL}/file/${row.original.fileId}`}
-                    className="font-semibold text-blue-600 hover:underline"
+                    className="font-medium text-gray-100 hover:underline bg-green-700 rounded-md py-1 px-2"
                   >
                     {row.original.fileName}
                   </Link>
-                  <button
+                  <Button
+                    size="icon"
+                    variant="ghost"
                     onClick={() => {
                       setNewFileName(row.original.fileName);
                       setEditingRowId(row.index);
                     }}
-                    className="p-1 text-gray-500 hover:text-purple-600 hover:bg-purple-100 rounded-lg transition-colors"
+                    className="text-gray-300 hover:text-white hover:bg-gray-700"
                   >
-                    <Edit size={16} />
-                  </button>
-                </>
+                    <Pencil className="h-4 w-4" />
+                  </Button>
+                </div>
               )}
             </div>
           );
         },
       },
-      {
-        accessorKey: "authorizedEmails",
-        header: "Authorized Emails",
-        cell: ({ row }) => (
-          <ul className="space-y-1">
-            {row.original.authorizedEmails.map((email, idx) => (
-              <li key={idx} className="text-sm text-gray-600">
-                {email}
-              </li>
-            ))}
-          </ul>
-        ),
-      },
+// Replace the current "Authorized Emails" cell with this implementation
+{
+  accessorKey: "authorizedEmails",
+  header: "Authorized Emails",
+  cell: ({ row }) => {
+    // Use a shared state from a context or pass down from the parent component
+    // This example assumes you'll add this state to your component
+    const [currentPage, setCurrentPage] = useState(0);
+    const emailsPerPage = 5;
+    
+    const emails = row.original.authorizedEmails;
+    const totalEmails = emails.length;
+    const totalPages = Math.ceil(totalEmails / emailsPerPage);
+    
+    // Display emails for the current page
+    const startIndex = currentPage * emailsPerPage;
+    const endIndex = Math.min(startIndex + emailsPerPage, totalEmails);
+    const displayEmails = emails.slice(startIndex, endIndex);
+    
+    return (
+      <div className="flex flex-col w-60">
+        <div className="gap-2 flex-col">
+          {displayEmails.map((email, idx) => (
+            <Badge 
+              key={idx} 
+              variant="secondary" 
+              className="mr-2 my-2 bg-blue-600 rounded-md text-gray-200 px-2 py-1"
+            >
+              {email}
+            </Badge>
+          ))}
+        </div>
+        
+        {totalEmails > emailsPerPage && (
+          <div className="flex items-center justify-between mt-2">
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={currentPage === 0}
+              onClick={() => setCurrentPage(p => Math.max(0, p - 1))}
+              className="p-1 h-8 border-gray-600 text-gray-300 hover:bg-gray-700 hover:text-white"
+            >
+              Previous
+            </Button>
+            
+            <span className="text-xs text-gray-400">
+              {startIndex + 1}-{endIndex} of {totalEmails}
+            </span>
+            
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={currentPage >= totalPages - 1}
+              onClick={() => setCurrentPage(p => Math.min(totalPages - 1, p + 1))}
+              className="p-1 h-8 border-gray-600 text-gray-300 hover:bg-gray-700 hover:text-white"
+            >
+              Next
+            </Button>
+          </div>
+        )}
+
+        {/* Store the current page in a data attribute for other cells to access */}
+        <div data-row-page={`${row.index}-${currentPage}`} className="hidden" />
+      </div>
+    );
+  },
+},
       {
         header: "Add Email",
         cell: ({ row }) => (
           <AddEmailCell 
-            handleAddEmail={(email) => handleAddEmail(row.original.fileName, email)}
-          />
+                handleAddEmail={async (email) => {
+                  try {
+                    const newData = await AddEmailToFile(row.original.fileName, email, 'Read');
+                    // Update the data state with the transformed new data
+                    setData(transformBackendData(newData));
+                    return true;
+                  } catch (error) {
+                    console.error('Error adding email:', error);
+                    throw error;
+                  }
+                }}
+                fileId={row.original.fileId}
+              />
         ),
       },
       {
         accessorKey: "permissions",
         header: "Permissions",
-        cell: ({ row }) => (
-          <ul className="space-y-2">
-            {row.original.authorizedEmails.map((email, idx) => (
-              <li key={idx} className="flex items-center gap-2">
-                <select
-                  value={row.original.permissions[idx]}
-                  onChange={(e) => 
-                    handlePermissionChange(
-                      row.original.fileName,
-                      email,
-                      e.target.value
-                    )
-                  }
-                  className="rounded-lg border-2 border-black px-2 py-1 text-sm focus:border-purple-400 focus:ring-1 focus:ring-purple-400 transition-colors"
-                >
-                  <option value="Read">Read</option>
-                  <option value="Read + Write">Read + Write</option>
-                </select>
-                <button
-                  onClick={() => handleDeleteUser(row.original.fileName, email)}
-                  disabled={deletingUser.fileName === row.original.fileName && deletingUser.email === email}
-                  className="text-red-500 hover:text-red-700 transition-colors disabled:opacity-50"
-                >
-                  {deletingUser.fileName === row.original.fileName && deletingUser.email === email ? (
-                    <Spinner color="text-red-500" size="h-4 w-4" />
-                  ) : (
-                    <Trash size={16} />
-                  )}
-                </button>
-              </li>
-            ))}
-          </ul>
-        ),
+        cell: ({ row }) => {
+          // Access the same page state that's used in the emails cell
+          // For this example, we'll use a ref to read the data attribute set by the emails cell
+          const [updatingPermission, setUpdatingPermission] = useState({ fileName: "", email: "" });
+          const [currentPage, setCurrentPage] = useState(0);
+          const emailsPerPage = 5;
+          
+          // Use effect to keep the pagination state in sync with the emails cell
+          useEffect(() => {
+            const syncPagination = () => {
+              const dataAttr = document.querySelector(`[data-row-page^="${row.index}-"]`);
+              if (dataAttr) {
+                const pageValue = dataAttr.getAttribute('data-row-page').split('-')[1];
+                setCurrentPage(parseInt(pageValue, 10));
+              }
+            };
+            
+            // Initial sync
+            syncPagination();
+            
+            // Set up observer to detect changes
+            const observer = new MutationObserver(syncPagination);
+            observer.observe(document.body, { attributes: true, subtree: true, attributeFilter: ['data-row-page'] });
+            
+            return () => observer.disconnect();
+          }, [row.index]);
+          
+          // Calculate the same slice of emails/permissions as the emails cell
+          const startIndex = currentPage * emailsPerPage;
+          const endIndex = Math.min(startIndex + emailsPerPage, row.original.authorizedEmails.length);
+          const displayEmails = row.original.authorizedEmails.slice(startIndex, endIndex);
+          const displayPermissions = row.original.permissions.slice(startIndex, endIndex);
+          
+          return (
+            <div className="space-y-2">
+              {displayEmails.map((email, idx) => {
+                const permission = displayPermissions[idx];
+                return (
+                  <div key={idx} className="flex items-center gap-2">
+                    <Select
+                      value={permission}
+                      onValueChange={async (value) => {
+                        // Set the updating state to show the spinner
+                        setUpdatingPermission({ 
+                          fileName: row.original.fileName, 
+                          email: email 
+                        });
+                        
+                        try {
+                          const updatedData = await UpdateUserPermission(
+                            row.original.fileName, 
+                            email, 
+                            value
+                          );
+                          // Update the data state with the transformed new data
+                          setData(transformBackendData(updatedData));
+                          toast.success(`Permission updated for ${email}`);
+                        } catch (error) {
+                          console.error('Error updating permission:', error);
+                          toast.error(`Failed to update permission: ${error.message}`);
+                        } finally {
+                          // Clear the updating state when done
+                          setUpdatingPermission({ fileName: "", email: "" });
+                        }
+                      }}
+                      disabled={updatingPermission.fileName === row.original.fileName && updatingPermission.email === email}
+                    >
+                      <SelectTrigger className="w-32 bg-gray-700 text-white border-gray-600">
+                        {updatingPermission.fileName === row.original.fileName && updatingPermission.email === email ? (
+                          <div className="flex items-center justify-center w-full">
+                            <div className="h-4 w-4 animate-spin rounded-full border-2 border-background border-t-transparent" />
+                          </div>
+                        ) : (
+                          <SelectValue />
+                        )}
+                      </SelectTrigger>
+                      <SelectContent className="bg-gray-800 text-white border-gray-600">
+                        <SelectItem value="Read" className="hover:bg-gray-700">Read</SelectItem>
+                        <SelectItem value="Read + Write" className="hover:bg-gray-700">Read + Write</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <Button
+                      size="icon"
+                      variant="destructive"
+                      className='bg-red-700'
+                      onClick={() => handleDeleteUser(row.original.fileName, email)}
+                      disabled={deletingUser.fileName === row.original.fileName && deletingUser.email === email}
+                    >
+                      {deletingUser.fileName === row.original.fileName && deletingUser.email === email ? (
+                        <div className="h-4 w-4 animate-spin rounded-full border-2 border-background border-t-transparent" />
+                      ) : (
+                        <Trash2 className="h-4 w-4" />
+                      )}
+                    </Button>
+                  </div>
+                );
+              })}
+            </div>
+          );
+        },
       },
       {
         accessorKey: "lastModified",
         header: "Last Modified",
         cell: ({ row }) => (
-          <div className="text-sm text-gray-600">
+          <span className="text-gray-400">
             {new Date(row.original.lastModified).toLocaleString()}
-          </div>
+          </span>
         ),
       },
       {
         header: "Actions",
         cell: ({ row }) => (
-          <div className="flex items-center gap-3">
-            <div className="flex flex-col gap-2">
-              <div className="flex gap-2">
-                <select
-                  value={tokenExpiryTimes[row.index] || "10m"}
-                  onChange={(e) => {
-                    setTokenExpiryTimes(prev => ({
-                      ...prev,
-                      [row.index]: e.target.value
-                    }));
-                  }}
-                  className="rounded-lg border-2 border-black px-2 py-1 text-sm focus:border-purple-400 focus:ring-1 focus:ring-purple-400 transition-colors"
-                  >
-                    <option value="10m">10m</option>
-                    <option value="1h">1h</option>
-                    <option value="1d">1d</option>
-                  </select>
-                  <button
-                    onClick={() => handleGenerateToken(row.index)}
-                    disabled={generatingToken === row.index}
-                    className="text-sm font-semibold bg-gradient-to-r from-green-500 to-blue-500 text-white px-3 py-1 rounded-lg hover:from-green-600 hover:to-blue-600 transition-colors shadow-sm disabled:opacity-50"
-                  >
-                    {generatingToken === row.index ? (
-                      <div className="flex items-center gap-2">
-                        <Spinner color="text-white" size="h-4 w-4" />
-                        Generating...
-                      </div>
-                    ) : (
-                      'Generate Token'
-                    )}
-                  </button>
-                  <button
-                    onClick={() => handleDeleteFile(row.original.fileName)}
+          <div className="flex flex-col gap-2">
+            <div className="flex items-center gap-2">
+              <Select
+                value={tokenExpiryTimes[row.index] || "10m"}
+                onValueChange={(value) => {
+                  setTokenExpiryTimes(prev => ({
+                    ...prev,
+                    [row.index]: value
+                  }));
+                }}
+              >
+                <SelectTrigger className="w-24 bg-gray-700 text-white border-gray-600">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent className="bg-gray-800 text-white border-gray-600">
+                <SelectItem value="1m" className="hover:bg-gray-700">1m</SelectItem>
+                  <SelectItem value="10m" className="hover:bg-gray-700">10m</SelectItem>
+                  <SelectItem value="1h" className="hover:bg-gray-700">1h</SelectItem>
+                  <SelectItem value="1d" className="hover:bg-gray-700">1d</SelectItem>
+                </SelectContent>
+              </Select>
+              <Button
+                variant="secondary"
+                onClick={() => handleGenerateToken(row.index)}
+                disabled={generatingToken === row.index}
+                className="bg-gray-600 text-white hover:bg-gray-700"
+              >
+                {generatingToken === row.index ? (
+                  <div className="h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent mr-2" />
+                ) : null}
+                Generate Token
+              </Button>
+              <Button
+                    size="icon"
+                    variant="destructive"
+                    className='bg-red-700'
+                    onClick={() => {
+                      setFileToDelete(row.original.fileName);
+                      setIsDeleteDialogOpen(true);
+                    }}
                     disabled={deletingFile === row.original.fileName}
-                    className="text-red-500 hover:text-red-700 transition-colors disabled:opacity-50"
                   >
                     {deletingFile === row.original.fileName ? (
-                      <Spinner color="text-red-500" size="h-5 w-5" />
+                      <div className="h-4 w-4 animate-spin rounded-full border-2 border-background border-t-transparent" />
                     ) : (
-                      <Trash size={20} />
+                      <Trash2 className="h-4 w-4" />
                     )}
-                  </button>
-                </div>
-                {row.original.token.value && (
-                  <div className="flex items-center gap-1 text-xs bg-purple-50 px-2 py-1 rounded">
-                    <span className="text-purple-700">
-                      {`${import.meta.env.VITE_FRONTEND_URL}/token/file/${row.original.fileName}/${row.original.token.value}`}
-                    </span>
-                    <button
-                      onClick={() => navigator.clipboard.writeText(
-                        `${import.meta.env.VITE_FRONTEND_URL}/token/file/${row.original.fileName}/${row.original.token.value}`
-                      )}
-                      className="text-purple-500 hover:text-purple-700 transition-colors"
-                    >
-                      <Copy size={14} />
-                    </button>
-                    <span className="text-gray-500 text-xs">
-                      (Expires: {new Date(row.original.token.expiresAt).toLocaleString()})
-                    </span>
-                  </div>
-                )}
-              </div>
-              <button
-                onClick={() => {
-                  setSelectedFileIndex(row.index);
-                  setIsShareOpen(true);
-                }}
-                className="text-sm font-semibold bg-gradient-to-r from-green-500 to-teal-500 text-white px-3 py-1 rounded-lg hover:from-green-600 hover:to-teal-600 transition-colors shadow-sm"
-              >
-                Share
-              </button>
+                  </Button>
             </div>
-          ),
-        },
-      ],
-      [
-        editingRowId,
-        newFileName,
-        renamingFile,
-        handleRenameFile,
-        deletingUser,
-        handleDeleteUser,
-        deletingFile,
-        handleDeleteFile,
-        generatingToken,
-        handleGenerateToken,
-        tokenExpiryTimes
-      ]
-    );
-  
-    const table = useReactTable({
-      data,
-      columns,
-      state: {
-        globalFilter,
+            {row.original.token.value && (
+              <div className="flex items-center rounded-md bg-gray-700 p-2 text-md">
+                <span className="truncate text-gray-200 w-36">{row.original.token.value}</span>
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  onClick={() => {
+                    navigator.clipboard.writeText(row.original.token.value);
+toast.success("copied to clipboard")
+                  }}
+                  className="text-gray-300 hover:text-white hover:bg-gray-600"
+                >
+                  <Copy className="h-4 w-4" />
+                </Button>
+              </div>
+            )}
+            <Button
+              variant="outline"
+              onClick={() => {
+                setSelectedFileIndex(row.index);
+                setIsShareOpen(true);
+              }}
+              className="border-gray-600 bg-gray-700 text-white hover:bg-gray-800"
+            >
+              <Share2 className="h-4 w-4 mr-2" />
+              Share
+            </Button>
+          </div>
+        ),
       },
-      onGlobalFilterChange: setGlobalFilter,
-      getCoreRowModel: getCoreRowModel(),
-      getFilteredRowModel: getFilteredRowModel(),
-      getSortedRowModel: getSortedRowModel(),
-      getPaginationRowModel: getPaginationRowModel(),
-    });
-  
-    if (isLoading) {
-      return (
-        <div className="flex justify-center items-center min-h-screen">
-          <Spinner color="text-purple-600" size="h-12 w-12" />
-        </div>
-      );
-    }
-  
-    if (error) {
-      return (
-        <div className="flex justify-center items-center min-h-screen">
-          <div className="text-red-600">Error loading data: {error}</div>
-        </div>
-      );
-    }
-  
+    ],
+    [editingRowId, newFileName, renamingFile, handleRenameFile, deletingUser, handleDeleteUser, 
+     deletingFile, handleDeleteFile, generatingToken, handleGenerateToken, tokenExpiryTimes, 
+     UpdateUserPermission, AddEmailToFile, toast]
+  );
+
+  const table = useReactTable({
+    data,
+    columns,
+    state: {
+      globalFilter,
+    },
+    onGlobalFilterChange: setGlobalFilter,
+    getCoreRowModel: getCoreRowModel(),
+    getFilteredRowModel: getFilteredRowModel(),
+    getSortedRowModel: getSortedRowModel(),
+    getPaginationRowModel: getPaginationRowModel(),
+  });
+
+  if (isLoading) {
+    return <LoadingSpinner />;
+  }
+
+  if (error) {
     return (
-      <div className="min-h-screen p-8 bg-gradient-to-r from-indigo-200 via-red-200 to-yellow-100">
-        <div className="mx-auto w-fit">
-          <h1 className="mb-8 text-4xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-purple-600 to-blue-600">
-            Admin Dashboard
-          </h1>
-  
-          <div className="mb-6 rounded-xl bg-white p-6 shadow-xl border-purple-500 border-4">
-            <div className="flex items-center justify-between mb-6">
-              <div className="relative flex-1 max-w-xl flex">
-                <Search className="absolute left-3 top-3 h-5 w-5 text-purple-400" />
-                <input
-                  type="text"
+      <div className="flex h-screen items-center justify-center bg-gray-900">
+        <Card className="w-96 bg-gray-800 border-gray-700">
+          <CardHeader>
+            <CardTitle className="text-destructive">Error</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-white">{error}</p>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen space-y-8 p-8 bg-gray-900 text-white">
+      <div className="container mx-auto">
+        <Card className="border-gray-700 bg-gray-800">
+          <CardHeader>
+          <CardTitle className="text-3xl font-bold flex flex-col gap-2 text-white justify-center relative p-4">
+  <button
+    onClick={() => navigate(-1)}
+    className="absolute left-4 top-4 hover:text-primary transition-colors"
+  >
+    <ArrowBigLeft size={40} />
+  </button>
+
+  <div className="flex flex-col items-center">
+<UserProfile user={user}/>
+  <span>{user.display_name} Admin Dashboard</span>
+</div>
+
+
+
+  <CardDescription className="text-gray-400 text-center">
+    Manage your files, permissions, and sharing settings
+  </CardDescription>
+
+  <CardDescription className="text-gray-400 text-center">
+    {user.email}
+  </CardDescription>
+</CardTitle>
+
+
+          </CardHeader>
+          <CardContent>
+            <div className="flex items-center justify-between gap-4 mb-6">
+              <div className="relative flex-1">
+                <Search className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
+                <Input
                   placeholder="Search files..."
-                  className="w-full rounded-xl border-2 border-purple-700 py-2 pl-10 pr-4 focus:outline-none focus:border-purple-400 focus:ring-1 focus:ring-purple-400 transition-colors"
                   value={globalFilter}
                   onChange={(e) => setGlobalFilter(e.target.value)}
+                  className="pl-9 bg-gray-700 text-white border-gray-600"
                 />
               </div>
               <NewFileButton />
             </div>
-  
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead className="bg-gradient-to-r from-purple-50 to-blue-50 rounded-xl">
+
+            <ScrollArea className="rounded-md border border-gray-700 h-[calc(100vh-300px)]">
+              <Table>
+                <TableHeader>
                   {table.getHeaderGroups().map((headerGroup) => (
-                    <tr key={headerGroup.id} className="rounded-xl">
+                    <TableRow key={headerGroup.id} className="border-gray-700">
                       {headerGroup.headers.map((header) => (
-                        <th
-                          key={header.id}
-                          className="px-4 py-3 text-left text-sm font-semibold text-purple-800 uppercase tracking-wider first:rounded-tl-xl last:rounded-tr-xl"
-                        >
-                          {flexRender(header.column.columnDef.header, header.getContext())}
-                        </th>
+                        <TableHead key={header.id} className="text-gray-400">
+                          {flexRender(
+                            header.column.columnDef.header,
+                            header.getContext()
+                          )}
+                        </TableHead>
                       ))}
-                    </tr>
+                    </TableRow>
                   ))}
-                </thead>
-                <tbody className="divide-y divide-purple-100">
-                  {table.getRowModel().rows.map((row) => (
-                    <tr key={row.id} className="hover:bg-purple-50 transition-colors even:bg-purple-50/30">
-                      {row.getVisibleCells().map((cell) => (
-                        <td key={cell.id} className="px-4 py-3">
-                          {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                        </td>
-                      ))}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-  
-            <div className="mt-4 flex items-center justify-between px-4">
+                </TableHeader>
+                <TableBody>
+                  {table.getRowModel().rows.length === 0 ? (
+                    <TableRow>
+                      <TableCell
+                        colSpan={columns.length}
+                        className="h-24 text-center text-gray-400"
+                      >
+                        No results.
+                      </TableCell>
+                    </TableRow>
+                  ) : (
+                    table.getRowModel().rows.map((row) => (
+                      <TableRow key={row.id} className="border-gray-700">
+                        {row.getVisibleCells().map((cell) => (
+                          <TableCell key={cell.id} className="text-gray-300">
+                            {flexRender(
+                              cell.column.columnDef.cell,
+                              cell.getContext()
+                            )}
+                          </TableCell>
+                        ))}
+                      </TableRow>
+                    ))
+                  )}
+                </TableBody>
+              </Table>
+            </ScrollArea>
+
+            <div className="mt-4 flex items-center justify-between px-2">
               <div className="flex items-center gap-2">
-                <span className="text-sm text-gray-600">
-                  Page {table.getState().pagination.pageIndex + 1} of {table.getPageCount()}
+                <span className="text-sm text-gray-400">
+                  Page {table.getState().pagination.pageIndex + 1} of{" "}
+                  {table.getPageCount()}
                 </span>
-                <select
-                  className="rounded-lg border-2 border-violet-500 px-2 py-1 text-sm focus:border-purple-400 focus:ring-1 focus:ring-purple-400 transition-colors"
-                  value={table.getState().pagination.pageSize}
-                  onChange={(e) => table.setPageSize(Number(e.target.value))}
+                <Select
+                  value={String(table.getState().pagination.pageSize)}
+                  onValueChange={(value) => table.setPageSize(Number(value))}
                 >
-                  {[10, 20, 30, 40, 50].map((pageSize) => (
-                    <option key={pageSize} value={pageSize}>
-                      Show {pageSize}
-                    </option>
-                  ))}
-                </select>
+                  <SelectTrigger className="w-32 bg-gray-700 text-white border-gray-600">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent className="bg-gray-800 text-white border-gray-600">
+                    {[10, 20, 30, 40, 50].map((pageSize) => (
+                      <SelectItem key={pageSize} value={String(pageSize)} className="hover:bg-gray-700">
+                        Show {pageSize}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
               <div className="flex items-center gap-2">
-                <button
-                  className="rounded-lg p-1.5 hover:bg-purple-100 transition-colors disabled:opacity-50"
+                <Button
+                  variant="outline"
                   onClick={() => table.previousPage()}
                   disabled={!table.getCanPreviousPage()}
+                  className="border-gray-600 text-gray-300 hover:bg-gray-700 hover:text-white"
                 >
-                  <ChevronLeft className="h-5 w-5 text-purple-600" />
-                </button>
-                <button
-                  className="rounded-lg p-1.5 hover:bg-purple-100 transition-colors disabled:opacity-50"
+                  Previous
+                </Button>
+                <Button
+                  variant="outline"
                   onClick={() => table.nextPage()}
                   disabled={!table.getCanNextPage()}
+                  className="border-gray-600 text-gray-300 hover:bg-gray-700 hover:text-white"
                 >
-                  <ChevronRight className="h-5 w-5 text-purple-600" />
-                </button>
+                  Next
+                </Button>
               </div>
             </div>
-          </div>
-  
-          <Dialog
-            open={isShareOpen}
-            onClose={() => setIsShareOpen(false)}
-            className="relative z-50"
-          >
-            <div className="fixed inset-0 bg-black/30 backdrop-blur-sm" aria-hidden="true" />
-            <div className="fixed inset-0 flex items-center justify-center p-4">
-              <Dialog.Panel className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl border-4 border-indigo-500">
-                <div className="flex items-center justify-between mb-4">
-                  <Dialog.Title className="text-xl font-bold bg-gradient-to-r from-purple-600 to-blue-600 bg-clip-text text-transparent">
-                    Share File
-                  </Dialog.Title>
-                  <button
-                    onClick={() => setIsShareOpen(false)}
-                    className="text-gray-500 hover:text-purple-600 transition-colors"
-                  >
-                    <X className="h-6 w-6" />
-                  </button>
-                </div>
-                <input
-                  type="email"
-                  placeholder="Enter email address"
-                  className="w-full rounded-xl border-2 border-violet-600 px-4 py-2 mb-4 focus:outline-none focus:border-purple-400 focus:ring-1 focus:ring-purple-400 transition-colors"
-                  value={shareEmail}
-                  onChange={(e) => setShareEmail(e.target.value)}
-                />
-                <div className="flex justify-end gap-3">
-                  <button
-                    onClick={() => setIsShareOpen(false)}
-                    className="rounded-xl px-4 py-2 text-sm font-medium text-gray-600 hover:bg-purple-50 transition-colors"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    onClick={handleShare}
-                    className="rounded-xl bg-gradient-to-r from-purple-500 to-blue-500 px-4 py-2 text-sm font-medium text-white hover:from-purple-600 hover:to-blue-600 transition-colors shadow-sm"
-                  >
-                    Share
-                  </button>
-                </div>
-              </Dialog.Panel>
+          </CardContent>
+        </Card>
+
+        <Dialog open={isShareOpen} onOpenChange={setIsShareOpen}>
+          <DialogContent className="bg-gray-800 border border-gray-700">
+            <DialogHeader>
+              <DialogTitle className="text-white">Share File</DialogTitle>
+              <DialogDescription className="text-gray-400">
+                Enter an email address to share this file with
+              </DialogDescription>
+            </DialogHeader>
+            <div className="grid gap-4 py-4">
+              <Input
+                type="email"
+                placeholder="Enter email address"
+                value={shareEmail}
+                onChange={(e) => setShareEmail(e.target.value)}
+                className="bg-gray-700 text-white border-gray-600"
+              />
             </div>
-          </Dialog>
-        </div>
+            <DialogFooter>
+              <Button
+                variant="outline"
+                onClick={() => setIsShareOpen(false)}
+                className="border-gray-600 text-black hover:bg-gray-700 hover:text-white"
+              >
+                Cancel
+              </Button>
+              <Button
+               className='bg-green-500'
+              onClick={handleShare}>Share</Button>
+            </DialogFooter>
+          </DialogContent>
+                </Dialog>
+                
+                <Dialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
+          <DialogContent className="bg-gray-800 border border-gray-700">
+            <DialogHeader>
+              <DialogTitle className="text-white">Confirm Deletion</DialogTitle>
+              <DialogDescription className="text-gray-400">
+                Are you sure you want to delete the file "{fileToDelete}"? This action cannot be undone.
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter className="flex items-center justify-end gap-2 pt-4">
+              <Button
+                variant="outline"
+                onClick={() => setIsDeleteDialogOpen(false)}
+                className="border-gray-600 text-black hover:bg-gray-700 hover:text-white"
+              >
+                Cancel
+              </Button>
+              <Button
+                variant="destructive"
+                onClick={() => handleDeleteFile(fileToDelete)}
+                disabled={deletingFile === fileToDelete}
+                className='bg-red-600'
+              >
+                {deletingFile === fileToDelete ? (
+                  <div className="h-4 w-4 animate-spin rounded-full border-2 border-background border-t-transparent mr-2" />
+                ) : null}
+                Delete
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </div>
-    );
-  };
-  
-  export default AdminPanel;
+    </div>
+  );
+};
+
+export default AdminPanel;

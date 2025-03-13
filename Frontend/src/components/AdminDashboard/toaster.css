@@ -1,0 +1,27 @@
+/* @keyframes toast-in {
+    from { transform: translateX(100%); }
+    to { transform: translateX(0); }
+  }
+  
+  @keyframes toast-out {
+    from { transform: translateX(0); }
+    to { transform: translateX(100%); }
+  }
+  
+  .toast {
+    @apply dark:bg-gray-800 dark:text-white dark:border dark:border-gray-700;
+    animation: toast-in 0.3s ease;
+  }
+  
+  .toast[data-swipe="move"] {
+    transform: translateX(var(--radix-toast-swipe-move-x));
+  }
+  
+  .toast[data-swipe="cancel"] {
+    transform: translateX(0);
+    transition: transform 0.2s ease-out;
+  }
+  
+  .toast[data-swipe="end"] {
+    animation: toast-out 0.2s ease-out;
+  } */

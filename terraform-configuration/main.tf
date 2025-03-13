@@ -82,23 +82,23 @@ resource "aws_nat_gateway" "nat" {
   }
 }
 
-# Second NAT Gateway for redundancy
-resource "aws_eip" "nat_zone2" {
-  domain = "vpc"
-  tags = {
-    Name        = "${local.env}-nat-zone2"
-    Environment = local.env
-  }
-}
+# # Second NAT Gateway for redundancy
+# resource "aws_eip" "nat_zone2" {
+#   domain = "vpc"
+#   tags = {
+#     Name        = "${local.env}-nat-zone2"
+#     Environment = local.env
+#   }
+# }
 
-resource "aws_nat_gateway" "nat_zone2" {
-  allocation_id = aws_eip.nat_zone2.id
-  subnet_id     = aws_subnet.public_zone2.id
-  tags = {
-    Name        = "${local.env}-nat-zone2"
-    Environment = local.env
-  }
-}
+# resource "aws_nat_gateway" "nat_zone2" {
+#   allocation_id = aws_eip.nat_zone2.id
+#   subnet_id     = aws_subnet.public_zone2.id
+#   tags = {
+#     Name        = "${local.env}-nat-zone2"
+#     Environment = local.env
+#   }
+# }
 
 # Route Tables and Associations
 resource "aws_route_table" "private" {
@@ -212,11 +212,32 @@ resource "aws_instance" "kafka-postgres-redis" {
 }
 
 resource "aws_s3_bucket" "sujal910992" {
-    bucket = "sujal910992"
-    # acl = "public-read-write"
-  
+  bucket = "sujal91099"
 }
+
+resource "aws_s3_bucket_cors_configuration" "sujal910992_cors" {
+  bucket = aws_s3_bucket.sujal910992.id
+
+  cors_rule {
+    allowed_headers = ["*"]
+    allowed_methods = ["GET", "PUT", "POST"]
+    allowed_origins = ["http://localhost:5173"]
+    expose_headers  = ["ETag"]
+  }
+}
+
 
 output "ip_address" {
   value = aws_instance.kafka-postgres-redis.public_ip
 }
+
+
+
+#       [
+#   {
+#     "AllowedHeaders": ["*"],
+#     "AllowedMethods": ["GET", "PUT", "POST"],
+#     "AllowedOrigins": ["http://localhost:5173"],
+#     "ExposeHeaders": ["ETag"]
+#   }
+# ]

@@ -1,5 +1,7 @@
 // utils/dbUtils.js
+
 import { User } from "../Model/Db_config.js";
+import Papa from "papaparse"
 
 export const getUserByGoogleId = async (googleId) => {
   const result = await User.query("SELECT * FROM users WHERE google_id = $1", [googleId]);
@@ -18,3 +20,25 @@ export const insertFileRecord = async (googleId, fileName, location,fileNameForU
     [googleId, fileName,email,true,true,true]
   );
 };
+
+export const parseCSV = (csvString) => {
+  return new Promise((resolve, reject) => {
+      const parsed = Papa.parse(csvString, { header: false, skipEmptyLines: true });
+
+      if (parsed.errors.length > 0) {
+          return reject(parsed.errors);
+      }
+
+      // Convert to RedisJSON-friendly format: { "data": [ [...], [...], ... ] }
+      const results = { data: parsed.data };
+
+      resolve(results);
+  });
+};
+
+
+
+
+
+
+

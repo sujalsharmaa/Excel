@@ -2,11 +2,183 @@
 @tailwind components;
 @tailwind utilities;
 
-.table-container {
-    max-width: 100%;
-    max-height: 100%;
-    overflow: auto;
-    border: 1px solid #ccc;
+
+.ht-theme-horizon-dark .htCore td{
+  border-right: 1px solid rgba(211, 211, 211, 0.5); /* Light gray column lines */
+  border-bottom: 1px solid rgba(211, 211, 211, 0.5); /* Light gray row lines */
+  border-top: 1px solid rgba(211, 211, 211, 0.5); /* Light gray row lines */
+  border-left: 1px solid rgba(211, 211, 211, 0.5); /* Light gray row lines */
+  cursor: cell !important;
+
+} 
+.ht-theme-horizon-dark .htCore th {
+  border-right: 1px solid rgba(211, 211, 211, 0.5); /* Light gray column lines */
+  border-bottom: 1px solid rgba(211, 211, 211, 0.5); /* Light gray row lines */
+  border-top: 1px solid rgba(211, 211, 211, 0.5); /* Light gray row lines */
+  border-left: 1px solid rgba(211, 211, 211, 0.5); /* Light gray row lines */
+ 
+
+}
+.ht-theme-horizon-dark th {
+  border: 1px solid rgba(255, 255, 255, 0.5) !important;
+
+}
+
+
+
+.ht-theme-main .htCore td{
+  border-right: 1px solid rgba(0, 0, 0, 0.5); /* Light gray column lines */
+  border-bottom: 1px solid rgba(0, 0, 0, 0.5); /* Light gray row lines */
+  border-top: 1px solid rgba(0, 0, 0, 0.5); /* Light gray row lines */
+  border-left: 1px solid rgba(0, 0, 0, 0.5); /* Light gray row lines */
+  cursor: cell !important;
+} 
+
+.ht-theme-main .htCore th {
+  border-right: 1px solid rgba(0, 0, 0, 0.5); /* Light gray column lines */
+  border-bottom: 1px solid rgba(0, 0, 0, 0.5); /* Light gray row lines */
+  border-top: 1px solid rgba(0, 0, 0, 0.5); /* Light gray row lines */
+  border-left: 1px solid rgba(0, 0, 0, 0.5); /* Light gray row lines */
+
+}
+.ht-theme-main th {
+  border: 1px solid rgba(255, 255, 255, 0.5) !important;
+}
+
+
+.ht-theme-main-dark .htCore {
+  cursor: cell !important;
+}
+
+.ht-no-theme .htCore {
+  cursor: cell !important;
+}
+
+.ht-theme-horizon .htCore td{
+  border-right: 1px solid rgba(211, 211, 211, 0.5); /* Light gray column lines */
+  border-bottom: 1px solid rgba(0, 0, 0, 0.5); /* Light gray row lines */
+  border-top: 1px solid rgba(211, 211, 211, 0.5); /* Light gray row lines */
+  border-left: 1px solid rgba(0, 0, 0, 0.5); /* Light gray row lines */
+  cursor: cell !important;
+
+} 
+.ht-theme-horizon .htCore th {
+  border-right: 1px solid rgba(211, 211, 211, 0.5); /* Light gray column lines */
+  border-bottom: 1px solid rgba(211, 211, 211, 0.5); /* Light gray row lines */
+  border-top: 1px solid rgba(211, 211, 211, 0.5); /* Light gray row lines */
+  border-left: 1px solid rgba(211, 211, 211, 0.5); /* Light gray row lines */
+  cursor: cell !important;
+}
+.ht-theme-horizon th {
+  border: 1px solid rgba(0, 0, 0, 0.5) !important;
+}
+
+.ht-no-theme .htCore td{
+  
+  border-right: 1px solid rgba(211, 211, 211, 0.5); /* Light gray column lines */
+  border-bottom: 1px solid rgba(0, 0, 0, 0.5); /* Light gray row lines */
+  border-top: 1px solid rgba(211, 211, 211, 0.5); /* Light gray row lines */
+  border-left: 1px solid rgba(0, 0, 0, 0.5); /* Light gray row lines */
+  cursor: cell !important;
+
+} 
+
+
+
+.ht-theme-horizon-dark .custom-bg {
+  background-color: var(--cell-bg-color, yellow) !important;
+}
+
+.alert-dialog-content {
+  background-color: #1e293b; /* Dark blue */
+  color: white;
+  border-radius: 8px;
+  padding: 16px;
+}
+
+
+
+@keyframes gradientAnimation {
+  0% { background-position: 0% 50%; }
+  16% { background-position: 100% 50%; }
+  32% { background-position: 50% 0%; }
+  48% { background-position: 50% 100%; }
+  64% { background-position: 0% 50%; }
+  80% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+
+.animate-gradient {
+  background: linear-gradient(270deg, 
+    #ff0000,  /* Red */
+    #ff7300,  /* Orange */
+    #ffeb00,  /* Yellow */
+    #47ff00,  /* Green */
+    #00ffee,  /* Cyan */
+    #0040ff,  /* Blue */
+    #8000ff,  /* Purple */
+    #ff0080   /* Pink */
+  );
+  background-size: 300% 300%;
+  animation: gradientAnimation 50s ease infinite;
+}
+
+
+@keyframes gradient-x {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+
+@keyframes light-sweep {
+  0% { transform: translateX(-100%) skewX(-30deg); }
+  50% { transform: translateX(100%) skewX(-30deg); }
+  100% { transform: translateX(300%) skewX(-30deg); }
+}
+
+@keyframes glow {
+  0%, 100% { box-shadow: 0 0 10px rgba(255, 255, 255, 0.8); }
+  50% { box-shadow: 0 0 20px rgba(255, 255, 255, 1); }
+}
+
+@keyframes border-glow {
+  0%, 100% { border-color: rgba(255, 255, 255, 0.3); }
+  50% { border-color: rgba(255, 255, 255, 1); }
+}
+
+.animate-gradient-x {
+  animation: gradient-x 10s infinite linear;
+}
+
+.animate-light-sweep {
+  animation: light-sweep 5s infinite linear;
+}
+
+.animate-glow {
+  animation: glow 3s infinite alternate;
+}
+
+.animate-border-glow {
+  animation: border-glow 2s infinite alternate;
+}
+
+
+
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+
+  }
+  body {
+    @apply bg-background text-foreground;
+
   }
 
-  
+}
+
+
+
+
+
+

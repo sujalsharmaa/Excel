@@ -10,18 +10,42 @@ import {createTable} from "./Model/CreateTable.js";
 import { User } from "./Model/Db_config.js";
 import cors from "cors"
 import { router } from "./Routes/Route.js";
-import { isAuthenticated } from "./Middleware/authMiddleware.js";
-import { generateSignedUrl } from "./utils/s3Utils.js";
-import Redis from "ioredis";
-import { redisCache } from "./Cache/RedisConfig.js";
+import morgan from "morgan";
+import winston from "winston";
+import NodeCache from "node-cache";
+import {ElasticsearchTransport} from "winston-elasticsearch";
 dotenv.config();
 
-
-export var fileNamingMaps = new Map()
-
-
 const app = express();
+export const nodeCache = new NodeCache();
 app.use(express.json()); 
+app.use(morgan("dev"))
+
+const esTransportOptions = {
+  level: "info",
+  clientOpts: { node: `http://${process.env.ELASTICSEARCH_URL}` || "http://localhost:9200" },
+  indexPrefix: "app-logs",
+  bufferLimit: 1000, // Prevent blocking if ES is down
+  flushInterval: 5000, // Send logs in batch every 5s
+};
+
+export const logger = winston.createLogger({
+  level: "info",
+  format: winston.format.json(),
+  transports: [
+      new winston.transports.Console(),
+      new ElasticsearchTransport(esTransportOptions)
+  ],
+});
+
+app.use((req, res, next) => {
+  logger.info(`Incoming request: ${req.method} ${req.url}`, {
+      timestamp: new Date().toISOString(),
+      ip: req.ip,
+      userAgent: req.headers["user-agent"],
+  });
+  next();
+});
 
 const corsOptions = {
     origin: process.env.FRONTEND_URL,
@@ -53,7 +77,7 @@ app.use(passport.session());
 passport.use(new GoogleStrategy({
     clientID: process.env.GOOGLE_CLIENT_ID,
     clientSecret: process.env.GOOGLE_CLIENT_SECRET,
-    callbackURL: "http://localhost:3000/auth/google/callback"
+    callbackURL: `${process.env.BACKEND_URL}/auth/google/callback`
   }, RegisterFlow
 ));
 
@@ -101,8 +125,8 @@ app.get('/auth/google',
 
 app.get('/auth/google/callback', 
   passport.authenticate('google', { 
-    failureRedirect: 'http://localhost:5173/',
-    successRedirect: 'http://localhost:5173/',
+    failureRedirect: process.env.FRONTEND_URL,
+    successRedirect: process.env.FRONTEND_URL,
     failureMessage: true
   })
 );
@@ -119,15 +143,13 @@ app.get('/auth/status', async (req, res) => {
       [googleId]
     );
 
-    let signedUrl = null;
-    if (fileResult.rows.length > 0) {
-      // signedUrl = await generateSignedUrl(process.env.S3_BUCKET_NAME, fileResult.rows[0].file_name);
-      signedUrl = fileResult.rows[0].file_id
-    }
 
-    res.json({ user: req.user, signedUrl });
+    if (fileResult.rows.length > 0) {
+      const LastModifiedFileId = fileResult.rows[0].file_id
+    return res.json({ user: req.user, LastModifiedFileId });
+    }
   } else {
-    res.json({ user: null });
+    return res.json({ user: null });
   }
 });
 
@@ -152,9 +174,13 @@ app.get('/logout', (req, res) => {
 const PORT = process.env.PORT || 3000;
 const startServer = async () => {
   try {
+    const emptyCSV = new Array(100)
+    .fill(",".repeat(10))
+    .join("\n");
+    nodeCache.set("CSV_TEMPLATE",JSON.stringify(emptyCSV))
     console.log('Setting up database tables...');
-    console.log(fileNamingMaps)
     await createTable()
+
     console.log('Database tables are ready!');
     
     app.listen(PORT, () => {
