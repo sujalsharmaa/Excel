@@ -31,7 +31,7 @@ const PaymentSuccessPage = () => {
         // Call your backend API to verify the payment
         console.log(pid)
         const response = await axios.post(
-          `${process.env.VITE_PUBLIC_API_URL}/payment-success`,
+          `${import.meta.env.VITE_PUBLIC_API_URL}/payment-success`,
           {pid},
           { withCredentials: true }
         

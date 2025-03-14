@@ -422,7 +422,7 @@ toast.error("failed to send file")
               ) : (
                 <div className="flex items-center gap-2">
                   <Link
-                    to={`${process.env.VITE_FRONTEND_URL}/file/${row.original.fileId}`}
+                    to={`${import.meta.env.VITE_FRONTEND_URL}/file/${row.original.fileId}`}
                     className="font-medium text-gray-100 hover:underline bg-green-700 rounded-md py-1 px-2"
                   >
                     {row.original.fileName}

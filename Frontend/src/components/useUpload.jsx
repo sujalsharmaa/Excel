@@ -45,7 +45,7 @@ const useUploadFile = () => {
 
       // Get a presigned URL from backend
       const response = await axios.post(
-        `${process.env.VITE_PUBLIC_API_URL}/uploadToS3AndLoadFile`,
+        `${import.meta.env.VITE_PUBLIC_API_URL}/uploadToS3AndLoadFile`,
         { filename: file.name, fileType: file.type },
         { withCredentials: true, headers: { "Content-Type": "application/json" } }
       );
@@ -63,7 +63,7 @@ const useUploadFile = () => {
 
       console.log("✅ File uploaded successfully to S3:", fileName);
       setIsUploading(false); // Remove Lock
-      window.location.href = `${process.env.VITE_FRONTEND_URL}/file/${fileName}`;
+      window.location.href = `${import.meta.env.VITE_FRONTEND_URL}/file/${fileName}`;
     } catch (err) {
       console.error("❌ Error uploading file to S3:", err);
       setIsUploading(false); // Allow Navigation Again
