@@ -3,9 +3,7 @@ import axios from 'axios';
 import { persist } from 'zustand/middleware';
 import Papa from "papaparse";
 import { MockDataHandsontable } from '@/components/Mockdata';
-import dotenv from "dotenv"
 
-dotenv.config()
 
 // Auth store
 export const useAuthStore = create(
