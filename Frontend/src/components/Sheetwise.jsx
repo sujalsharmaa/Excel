@@ -6,7 +6,7 @@ import { HyperFormula } from 'hyperformula';
 import { useSpreadsheetStore, useAuthStore, useWebSocketStore } from '@/Store/useStore.js';
 import { useRef, useCallback, useEffect, useState } from 'react';
 import { debounce } from 'lodash';
-import msgpack from "msgpack-lite"; // Install with: npm install msgpack-lite
+import * as msgpack from '@msgpack/msgpack';
 import SpreadsheetHeader from './SpreadSheetHeader';
 import 'handsontable/styles/ht-theme-main.css';
 import 'handsontable/styles/handsontable.css';
