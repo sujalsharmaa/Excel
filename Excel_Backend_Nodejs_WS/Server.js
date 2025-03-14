@@ -15,6 +15,7 @@ import winston from "winston";
 import {ElasticsearchTransport} from "winston-elasticsearch";
 dotenv.config();
 
+
 // Elasticsearch Transport Configuration
 const esTransportOpts = {
   level: 'info', // Log level (can be error, warn, info, etc.)
