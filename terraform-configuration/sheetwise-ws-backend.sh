@@ -22,4 +22,11 @@ usermod -aG docker ubuntu
 apt-get autoremove -y
 apt-get clean
 
-# docker pull sheetwise-ws
+git clone https://github.com/sujalsharmaa/Excel.git
+
+apt-get install nodejs -y
+apt-get install npm -y
+
+npm i 
+
+

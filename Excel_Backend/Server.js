@@ -170,6 +170,10 @@ app.get('/logout', (req, res) => {
   });
 });
 
+app.get("/",(req,res)=>{
+  res.send("hello sheetwise backend is working")
+})
+
 // Start server
 const PORT = process.env.PORT || 3000;
 const startServer = async () => {

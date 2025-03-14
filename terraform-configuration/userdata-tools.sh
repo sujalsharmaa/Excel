@@ -32,6 +32,12 @@ docker run --name postgres -e POSTGRES_USER=postgres -e POSTGRES_PASSWORD=postgr
 docker run -d --name elasticsearch -p 9200:9200 -e "discovery.type=single-node" docker.elastic.co/elasticsearch/elasticsearch:8.3.2
 docker run -d --name kibana -p 5601:5601 --link elasticsearch:elasticsearch docker.elastic.co/kibana/kibana:8.3.2
 
+git clone https://github.com/sujalsharmaa/Excel.git
+
+apt-get install nodejs -y
+apt-get install npm -y
+
+npm i 
 
 # docker run -d \
 #   --name zookeeper \
