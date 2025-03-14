@@ -82,24 +82,6 @@ resource "aws_nat_gateway" "nat" {
   }
 }
 
-# # Second NAT Gateway for redundancy
-# resource "aws_eip" "nat_zone2" {
-#   domain = "vpc"
-#   tags = {
-#     Name        = "${local.env}-nat-zone2"
-#     Environment = local.env
-#   }
-# }
-
-# resource "aws_nat_gateway" "nat_zone2" {
-#   allocation_id = aws_eip.nat_zone2.id
-#   subnet_id     = aws_subnet.public_zone2.id
-#   tags = {
-#     Name        = "${local.env}-nat-zone2"
-#     Environment = local.env
-#   }
-# }
-
 # Route Tables and Associations
 resource "aws_route_table" "private" {
   vpc_id = aws_vpc.main.id
@@ -211,6 +193,28 @@ resource "aws_instance" "kafka-postgres-redis" {
   }
 }
 
+
+resource "aws_instance" "sheetwise-ws-backend" {
+  
+  ami                    = "ami-0866a3c8686eaeeba"
+  instance_type          = "t3.medium"
+  subnet_id              = aws_subnet.public_zone1.id
+  associate_public_ip_address = true
+  security_groups    = [aws_security_group.ec2_sg.id]
+
+    root_block_device {
+      volume_size = 30
+      volume_type = "gp3"
+    }
+
+  user_data = file("./sheetwise-ws-backend.sh")
+
+  tags = {
+    Name = "kafka-redis-postgres-server"
+  }
+}
+
+
 resource "aws_s3_bucket" "sujal910992" {
   bucket = "sujal91099"
 }
@@ -221,7 +225,7 @@ resource "aws_s3_bucket_cors_configuration" "sujal910992_cors" {
   cors_rule {
     allowed_headers = ["*"]
     allowed_methods = ["GET", "PUT", "POST"]
-    allowed_origins = ["http://localhost:5173"]
+    allowed_origins = ["https://sujalsharma.in"]
     expose_headers  = ["ETag"]
   }
 }
@@ -231,13 +235,3 @@ output "ip_address" {
   value = aws_instance.kafka-postgres-redis.public_ip
 }
 
-
-
-#       [
-#   {
-#     "AllowedHeaders": ["*"],
-#     "AllowedMethods": ["GET", "PUT", "POST"],
-#     "AllowedOrigins": ["http://localhost:5173"],
-#     "ExposeHeaders": ["ETag"]
-#   }
-# ]
