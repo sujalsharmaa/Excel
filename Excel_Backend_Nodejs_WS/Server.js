@@ -13,7 +13,7 @@ import { createClient } from "redis";
 import morgan from "morgan";
 import winston from "winston";
 import {ElasticsearchTransport} from "winston-elasticsearch";
-
+dotenv.config();
 
 // Elasticsearch Transport Configuration
 const esTransportOpts = {
@@ -40,7 +40,7 @@ const logger = winston.createLogger({
 logger.info("WebSocket App Started", { timestamp: new Date().toISOString() });
 
 const { Pool } = pkg;
-dotenv.config();
+
 
 const s3 = new AWS.S3({
   accessKeyId: process.env.accesskeyid,

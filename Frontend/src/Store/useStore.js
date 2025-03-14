@@ -3,6 +3,9 @@ import axios from 'axios';
 import { persist } from 'zustand/middleware';
 import Papa from "papaparse";
 import { MockDataHandsontable } from '@/components/Mockdata';
+import dotenv from "dotenv"
+
+dotenv.config()
 
 // Auth store
 export const useAuthStore = create(
@@ -25,7 +28,7 @@ export const useAuthStore = create(
       setfileUrl: (url) => set({ fileUrl: url }),
 
       login: async () => {
-        window.location.href = `${import.meta.env.VITE_PUBLIC_API_URL}/auth/google`;
+        window.location.href = `${process.env.VITE_PUBLIC_API_URL}/auth/google`;
       },
 
       logout: async () => {
@@ -45,7 +48,7 @@ export const useAuthStore = create(
             await disconnect();
 
             set({ isLoading: true });
-            await axios.get(`${import.meta.env.VITE_PUBLIC_API_URL}/logout`, {
+            await axios.get(`${process.env.VITE_PUBLIC_API_URL}/logout`, {
               withCredentials: true
             });
             return;
@@ -72,7 +75,7 @@ export const useAuthStore = create(
 
             set({ isLoading: true });
               const response = await axios.get(
-                `${import.meta.env.VITE_PUBLIC_API_URL}/auth/status`,
+                `${process.env.VITE_PUBLIC_API_URL}/auth/status`,
                   {withCredentials: true} 
               
             );
@@ -88,7 +91,7 @@ export const useAuthStore = create(
 
                 setTimeout(() => {
                 if (response.data.LastModifiedFileId && !window.location.href.includes(`/file/${response.data.LastModifiedFileId}`)) {
-                  window.location.href = `${import.meta.env.VITE_FRONTEND_URL}/file/${response.data.LastModifiedFileId}`;
+                  window.location.href = `${process.env.VITE_FRONTEND_URL}/file/${response.data.LastModifiedFileId}`;
                    
                   return
                  }
@@ -155,7 +158,7 @@ export const useSpreadsheetStore = create(
       try {
 
         await axios.post(
-          `${import.meta.env.VITE_PUBLIC_API_URL}/file/rename`,
+          `${process.env.VITE_PUBLIC_API_URL}/file/rename`,
           { file_Old_name: fileId, fileNewName: newFileName },
           { withCredentials: true }
         );
@@ -170,7 +173,7 @@ export const useSpreadsheetStore = create(
       createFile: async (fileName, users) => {
         try {
           const response = await axios.post(
-            `${import.meta.env.VITE_PUBLIC_API_URL}/newfile`,
+            `${process.env.VITE_PUBLIC_API_URL}/newfile`,
             {
               fileNamebyUser: fileName,
               UserPermissions: users
@@ -181,7 +184,7 @@ export const useSpreadsheetStore = create(
           console.log("File created successfully:");
       
           // Redirect to the new file page
-          window.location.href = `${import.meta.env.VITE_FRONTEND_URL}/file/${response.data.fileId}`;
+          window.location.href = `${process.env.VITE_FRONTEND_URL}/file/${response.data.fileId}`;
       
           return response.data;
         } catch (error) {
@@ -230,7 +233,7 @@ export const useSpreadsheetStore = create(
     
             // 🔹 Fetch from server if not in cache
             const response = await axios.get(
-                `${import.meta.env.VITE_PUBLIC_API_URL}/file/${FileLink}`,
+                `${process.env.VITE_PUBLIC_API_URL}/file/${FileLink}`,
                 { withCredentials: true }
             );
 
@@ -275,7 +278,7 @@ export const useSpreadsheetStore = create(
         setIsLoading(true);
     
         const response = await axios.post(
-          `${import.meta.env.VITE_PUBLIC_API_URL}/uploadToS3AndLoadFile`,
+          `${process.env.VITE_PUBLIC_API_URL}/uploadToS3AndLoadFile`,
           formData,
           {
             withCredentials: true,
@@ -290,7 +293,7 @@ export const useSpreadsheetStore = create(
         );
     
         setTimeout(() => {
-          window.location.href = `${import.meta.env.VITE_FRONTEND_URL}/file/${response.data.fileName}`;
+          window.location.href = `${process.env.VITE_FRONTEND_URL}/file/${response.data.fileName}`;
         }, 500);
       } catch (err) {
         console.error("Error uploading file:", err);
@@ -309,7 +312,7 @@ sendEmailFileLink: async(email,file_id,fileName) =>{
   
   setIsLoading(true);
   const res = await axios.post(
-    `${import.meta.env.VITE_PUBLIC_API_URL}/email`,
+    `${process.env.VITE_PUBLIC_API_URL}/email`,
     { email,file_id,fileName},
     { withCredentials: true }
   );
@@ -319,7 +322,7 @@ sendEmailFileLink: async(email,file_id,fileName) =>{
 },
 
 LoadUserStorage: async() =>{
-  const res = await axios.get(`${import.meta.env.VITE_PUBLIC_API_URL}/storageSize`,
+  const res = await axios.get(`${process.env.VITE_PUBLIC_API_URL}/storageSize`,
     {withCredentials:true}
   )
   return res.data
@@ -329,7 +332,7 @@ LoadUserStorage: async() =>{
 LoadAdminData: async () => {
   try {
     const res = await axios.get(
-      `${import.meta.env.VITE_PUBLIC_API_URL}/admin`,
+      `${process.env.VITE_PUBLIC_API_URL}/admin`,
       { withCredentials: true }
     );
 
@@ -351,7 +354,7 @@ LoadAdminData: async () => {
 AddEmailToFile: async (fileName, email, permission) => {
   try {
     const res = await axios.post(
-     `${import.meta.env.VITE_PUBLIC_API_URL}/admin/files/${encodeURIComponent(fileName)}/users`,
+     `${process.env.VITE_PUBLIC_API_URL}/admin/files/${encodeURIComponent(fileName)}/users`,
       { 
         email: email,
         read_permission: permission.includes('Read'),
@@ -370,7 +373,7 @@ UpdateUserPermission: async (fileName, email, permission) => {
 
   try {
     await axios.put(
-      `${import.meta.env.VITE_PUBLIC_API_URL}/admin/files/${fileName}/users/${email}`,
+      `${process.env.VITE_PUBLIC_API_URL}/admin/files/${fileName}/users/${email}`,
       { 
         read_permission: permission.includes('Read'),
         write_permission: permission.includes('Write')
@@ -388,7 +391,7 @@ UpdateUserPermission: async (fileName, email, permission) => {
   try {
  
     const response = await axios.post(
-      `${import.meta.env.VITE_PUBLIC_API_URL}/admin/generateToken`,
+      `${process.env.VITE_PUBLIC_API_URL}/admin/generateToken`,
       { time, fileName }, // Corrected: Move `time` and `fileName` inside the request body
       { withCredentials: true }
     );
@@ -408,7 +411,7 @@ LoadFileByToken: async (fileURL, token, navigate) => {
     setIsLoading(true);
     setWritePermission(false)
     const res = await axios.get(
-      `${import.meta.env.VITE_PUBLIC_API_URL}/token/file/${fileURL}/${token}`
+      `${process.env.VITE_PUBLIC_API_URL}/token/file/${fileURL}/${token}`
     );
 
     const { fileContent, ttl } = res.data;
@@ -456,7 +459,7 @@ LoadFileByToken: async (fileURL, token, navigate) => {
 deleteFile: async (fileName) => {
   try {
     await axios.delete(
-      `${import.meta.env.VITE_PUBLIC_API_URL}/admin/files/${encodeURIComponent(fileName)}`,
+      `${process.env.VITE_PUBLIC_API_URL}/admin/files/${encodeURIComponent(fileName)}`,
       { withCredentials: true }
     );
     return await get().LoadAdminData(); // Refresh data
@@ -469,7 +472,7 @@ deleteFile: async (fileName) => {
 deleteUserPermission: async (fileName, email) => {
   try {
     await axios.delete(
-      `${import.meta.env.VITE_PUBLIC_API_URL}/admin/files/${encodeURIComponent(fileName)}/users/${encodeURIComponent(email)}`,
+      `${process.env.VITE_PUBLIC_API_URL}/admin/files/${encodeURIComponent(fileName)}/users/${encodeURIComponent(email)}`,
       { withCredentials: true }
     );
     return await get().LoadAdminData(); // Refresh data
@@ -509,7 +512,7 @@ export const useWebSocketStore = create(
       
           // Check write permission before initializing WebSocket
           const response = await axios.get(
-            `${import.meta.env.VITE_PUBLIC_API_URL}/file/${fileUrl}/writeCheck`,
+            `${process.env.VITE_PUBLIC_API_URL}/file/${fileUrl}/writeCheck`,
             { withCredentials: true, responseType: "json", timeout: 5000 }
           );
       
@@ -519,7 +522,7 @@ export const useWebSocketStore = create(
           setWritePermission(response.data.permission)
       
           // Initialize WebSocket if permission granted
-          const ws = new WebSocket(`${import.meta.env.VITE_WS_URL}/ws`);
+          const ws = new WebSocket(`${process.env.VITE_WS_URL}/ws`);
 
 
           ws.onopen = () => {

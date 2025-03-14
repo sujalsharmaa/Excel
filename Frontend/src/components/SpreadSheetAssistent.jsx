@@ -86,7 +86,7 @@ const SpreadsheetAssistant = ({ hotInstance }) => {
 
     try {
       const response = await axios.post(
-        `${import.meta.env.VITE_PUBLIC_API_URL}/chat`,
+        `${process.env.VITE_PUBLIC_API_URL}/chat`,
        
         {
             fileUrl,
