@@ -56,6 +56,7 @@ const corsOptions = {
 
 // Middleware order is important!
 app.use(cors(corsOptions));
+app.options('*', cors(corsOptions)); // Handle preflight requests
 app.use(bodyParser.urlencoded({ extended: true }));
 
 // 1. Session middleware must come before passport
