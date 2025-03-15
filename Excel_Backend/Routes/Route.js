@@ -40,7 +40,8 @@ export const router = Router();
 
 router.get("/admin", isAuthenticated, async (req, res) => {
   try {
-    const googleId = req.user.google_id;
+    const googleId = req.user.id;
+    console.log(req.user.id)
 
     // Fetch all project files for the user
     const query1 = `
@@ -92,7 +93,7 @@ router.get("/admin", isAuthenticated, async (req, res) => {
 router.post("/newfile", isAuthenticated, async (req, res) => {
   try {
     const { fileNamebyUser, UserPermissions } = req.body;
-    const googleId = req.user.google_id;
+    const googleId = req.user.id;
     const userEmail = req.user.email;
 
     const result1 = await User.query(
@@ -195,7 +196,7 @@ router.post("/newfile", isAuthenticated, async (req, res) => {
   router.post("/file/rename", isAuthenticated, async (req, res) => {
     try {
       const { file_Old_name, fileNewName } = req.body;
-      const googleId = req.user.google_id;
+      const googleId = req.user.id;
       
       console.log("i got hit ", fileNewName,file_Old_name,googleId);
   
@@ -237,7 +238,7 @@ router.post("/newfile", isAuthenticated, async (req, res) => {
       console.log("Permission check route hit");
   
       const { fileName } = req.params;
-      const googleId = req.user.google_id;
+      const googleId = req.user.id;
   
       const result = await User.query(
         `SELECT write_permission 
@@ -262,7 +263,7 @@ router.post("/newfile", isAuthenticated, async (req, res) => {
 
   router.get("/file/:fileName", isAuthenticated, async (req, res) => {
     const { fileName } = req.params;
-    const googleId = req.user.google_id;
+    const googleId = req.user.id;
 
     try {
         // 🔹 Step 1: Check User Permissions
@@ -346,7 +347,7 @@ router.post("/email", isAuthenticated, async (req, res) => {
   try {
     const { email, file_id,fileName } = req.body;
     const name = req.user.display_name;
-    const google_id = req.user.google_id;
+    const google_id = req.user.id;
     const link = `${process.env.FRONTEND_URL}/file/${file_id}`;
 
     // Generate signed URL for file access
@@ -376,7 +377,7 @@ router.post("/email", isAuthenticated, async (req, res) => {
   try {
     const { fileName } = req.params;
     const { email, read_permission, write_permission } = req.body;
-    const google_id = req.user.google_id;
+    const google_id = req.user.id;
 
     // Check if the file exists
     const fileResult = await User.query(
@@ -437,7 +438,7 @@ router.put('/admin/files/:fileName/users/:email', isAuthenticated, async (req, r
   try {
     const { fileName, email } = req.params;
     const { read_permission, write_permission } = req.body;
-    const google_id = req.user.google_id;
+    const google_id = req.user.id;
 
     // Check if the file exists
     const fileResult = await User.query(
@@ -485,7 +486,7 @@ router.put('/admin/files/:fileName/users/:email', isAuthenticated, async (req, r
 router.post("/admin/generateToken", isAuthenticated, async (req, res) => {
   try {
     console.log("i got hit from token req")
-    const google_id = req.user.google_id;
+    const google_id = req.user.id;
     const { time, fileName } = req.body;
     console.log("data from token req => ",req.body)
 
@@ -608,7 +609,7 @@ router.get("/token/file/:file_id/:token", async (req, res) => {
 router.delete('/admin/files/:fileName', isAuthenticated, async (req, res) => {
   try {
     const { fileName } = req.params;
-    const googleId = req.user.google_id;
+    const googleId = req.user.id;
 
     const fileCount = await User.query(
       `SELECT count(file_id) from project_files
@@ -667,7 +668,7 @@ router.delete('/admin/files/:fileName', isAuthenticated, async (req, res) => {
 router.delete('/admin/files/:fileName/users/:email', isAuthenticated, async (req, res) => {
   try {
     const { fileName, email } = req.params;
-    const googleId = req.user.google_id;
+    const googleId = req.user.id;
 
     // Get file ID
     const fileResult = await User.query(
@@ -705,7 +706,7 @@ router.delete('/admin/files/:fileName/users/:email', isAuthenticated, async (req
 
 // Get S3 Folder Size
 router.get("/storageSize", isAuthenticated, async (req, res) => {
-  const googleId = req.user.google_id;
+  const googleId = req.user.id;
   const folderPrefix = `${googleId}/`; // Ensure it ends with "/"
   console.log("googleid",googleId)
 
@@ -784,7 +785,7 @@ router.post('/verify-payment',isAuthenticated, async (req, res) => {
 
   if (isAuthentic) {
     // Update user's storage limit in database
-    await updateUserStorage(req.user.google_id, 10); // Add 100GB
+    await updateUserStorage(req.user.id, 10); // Add 100GB
     res.json({ success: true });
   } else {
     res.status(400).json({ success: false });
@@ -819,7 +820,7 @@ router.post(
   async (req, res) => {
     try {
       const { filename, UserPermissions, fileType } = req.body;
-      const googleId = req.user.google_id;
+      const googleId = req.user.id;
       const userEmail = req.user.email;
       const fileSize = req.file.size;
       let filePath = req.file.path;
@@ -1041,7 +1042,7 @@ router.post('/payment-success',isAuthenticated, async (req, res) => {
   const isValid = await verifyPaymentWithRazorpay(pid);
   
   if (isValid) {
-    await updateUserStorage(req.user.google_id, 10); // Add 100GB
+    await updateUserStorage(req.user.id, 10); // Add 100GB
     return res.json({ success: true });
   } else {
     return res.status(400).json({ success: false });

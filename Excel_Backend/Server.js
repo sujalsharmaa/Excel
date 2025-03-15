@@ -39,14 +39,14 @@ export const logger = winston.createLogger({
   ],
 });
 
-app.use((req, res, next) => {
-  logger.info(`Incoming request: ${req.method} ${req.url}`, {
-      timestamp: new Date().toISOString(),
-      ip: req.ip,
-      userAgent: req.headers["user-agent"],
-  });
-  next();
-});
+// app.use((req, res, next) => {
+//   logger.info(`Incoming request: ${req.method} ${req.url}`, {
+//       timestamp: new Date().toISOString(),
+//       ip: req.ip,
+//       userAgent: req.headers["user-agent"],
+//   });
+//   next();
+// });
 
 const corsOptions = {
     origin: [process.env.FRONTEND_URL, "http://localhost:5173"], // Allow frontend URLs
@@ -161,7 +161,7 @@ app.get('/auth/status', async (req, res) => {
   }
 
   if (req.user) {
-    const googleId = req.user.google_id;
+    const googleId = req.user.id;
     const fileResult = await User.query(
       `SELECT file_id FROM project_files WHERE google_id = $1 ORDER BY modified_at DESC LIMIT 1`,
       [googleId]
@@ -192,6 +192,25 @@ app.get('/logout', (req, res) => {
     });
     return res.status(200).send("logged out");
   });
+});
+
+app.post('/auth/refresh', async (req, res) => {
+  const { token } = req.body;
+  
+  if (!token) {
+    return res.status(400).json({ error: "Token is required" });
+  }
+  
+  const user = JWTService.decodeToken(token);
+  
+  if (!user) {
+    return res.status(401).json({ error: "Invalid or expired token" });
+  }
+  
+  // Generate new token
+  const newToken = JWTService.generateToken(user);
+  
+  return res.json({ token: newToken });
 });
 
 app.get("/",(req,res)=>{

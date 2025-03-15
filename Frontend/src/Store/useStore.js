@@ -1,11 +1,14 @@
 import { create } from 'zustand';
-import axios from 'axios';
+import axios, { AxiosHeaders } from 'axios';
 import { persist } from 'zustand/middleware';
 import Papa from "papaparse";
 import { MockDataHandsontable } from '@/components/Mockdata';
 
+const token = localStorage.getItem('token')
+axios.defaults.headers.common['Authorization'] = `Bearer ${token}`
 
-// Auth store
+
+
 export const useAuthStore = create(
   persist(
     (set, get) => ({
@@ -87,141 +90,149 @@ export const useAuthStore = create(
       },
 
       // Handle Google login with tokeninfo endpoint
-      handleGoogleLogin: async (idToken) => {
-        const { setIsLoading } = get();
-        try {
-          setIsLoading(true);
-          
-          // Send token to backend for verification and session creation
-          const response = await axios.post(
-            `${import.meta.env.VITE_PUBLIC_API_URL}/auth/google/verify`,
-            { token: idToken },
-            { withCredentials: true }
-          );
-          
-          if (response.data.user) {
-            set({
-              user: response.data.user,
-              isAuthenticated: true,
-              fileUrl: response.data.LastModifiedFileId,
-              error: null
-            });
-            
-            // Redirect to file if available
-            if (response.data.LastModifiedFileId && 
-                !window.location.href.includes(`/file/${response.data.LastModifiedFileId}`)) {
-                  console.log("hello from redirection logic")
-              window.location.href = `${import.meta.env.VITE_FRONTEND_URL}/file/${response.data.LastModifiedFileId}`;
-            }
-          }
-        } catch (error) {
-          console.error("Google login error:", error);
-          set({ error: error.response?.data?.error || 'Authentication failed' });
-        } finally {
-          setIsLoading(false);
-        }
-      },
+      // Add this to your store
+setToken: (token) => {
+  console.log("token =>",token)
+  set({ Token: token });
+  // Set the token for all future requests
+  localStorage.setItem("token",token)
+  axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+},
 
-      // For backward compatibility, maintain the redirect method
-      // but also add the new Google Sign-In prompt method
-      login: async () => {
-        try {
-          // Try the new method first
-          await get().initGoogleAuth();
-          if (window.google && window.google.accounts) {
-            window.google.accounts.id.prompt();
-            return;
-          }
-          
-          // Fall back to the old redirect method if Google Sign-In fails
-          
-          // window.location.href = `${import.meta.env.VITE_PUBLIC_API_URL}/auth/google`;
-        } catch (error) {
-          console.error("Login initialization error:", error);
-          // Fall back to the old redirect method
-          window.location.href = `${import.meta.env.VITE_PUBLIC_API_URL}/auth/google`;
-        }
-      },
+// Update the handleGoogleLogin function:
+handleGoogleLogin: async (idToken) => {
+  const { setIsLoading, setToken } = get();
+  try {
+    setIsLoading(true);
+    
+    const response = await axios.post(
+      `${import.meta.env.VITE_PUBLIC_API_URL}/auth/google/verify`,
+      { token: idToken },
+      { withCredentials: true }
+    );
+    console.log("response=>",response)
+    
+    if (response.data.user) {
+      setToken(response.data.token); // Store and set the token
+      
+      set({
+        user: response.data.user,
+        isAuthenticated: true,
+        fileUrl: response.data.LastModifiedFileId,
+        error: null
+      });
+      
+      // Redirect to file if available
+      if (response.data.LastModifiedFileId && 
+          !window.location.href.includes(`/file/${response.data.LastModifiedFileId}`)) {
+        window.location.href = `${import.meta.env.VITE_FRONTEND_URL}/file/${response.data.LastModifiedFileId}`;
+      }
+    }
+  } catch (error) {
+    console.error("Google login error:", error);
+    set({ error: error.response?.data?.error || 'Authentication failed' });
+  } finally {
+    setIsLoading(false);
+  }
+},
 
-      // Rest of the methods remain the same
-      logout: async () => {
-        const {disconnect} = useWebSocketStore.getState();
-        const {setIsLoading} = get();
-        const { setData } = useSpreadsheetStore.getState();
-        try {
-          setIsLoading(true);
-          set({
-            user: null,
-            isAuthenticated: false,
-            error: null,
-            fileUrl: null,
-            fileUserName: null,
-          });
+// Update the checkAuth function:
+checkAuth: async () => {
+  const { user, fileUrl, Token, setToken } = useAuthStore.getState();
   
-          await disconnect();
+  // If we have a token, set it in axios headers
+  if (Token) {
+    axios.defaults.headers.common['Authorization'] = `Bearer ${Token}`;
+  }
+  
+  if (user && fileUrl) {
+    console.log("checkAuth");
+    return;
+  }
+  
+  try {
+    set({ isLoading: true });
+    
+    const response = await axios.get(
+      `${import.meta.env.VITE_PUBLIC_API_URL}/auth/status`,
+      { headers: Token ? { Authorization: `Bearer ${Token}` } : {} }
+    );
 
-          await axios.get(`${import.meta.env.VITE_PUBLIC_API_URL}/logout`, {
-            withCredentials: true
-          });
-          
-          // Sign out from Google as well
-          if (window.google && window.google.accounts) {
-            window.google.accounts.id.disableAutoSelect();
-          }
-          window.location.reload()
-        } catch (error) {
-          set({ error: 'Failed to logout' });
-        } finally {
-          setData(MockDataHandsontable);
-          setIsLoading(false);
-        }
-      },
-
-      checkAuth: async () => {
-        const {user, fileUrl} = useAuthStore.getState();
-        if (user && fileUrl) {
-          console.log("checkAuth");
+    if (response.data.user) {
+      if (response.data.token) {
+        setToken(response.data.token);
+      }
+      
+      set({
+        user: response.data.user,
+        isAuthenticated: true,
+        error: null,
+        fileUrl: response.data.LastModifiedFileId,
+        Token: state.Token 
+      });
+      
+      setTimeout(() => {
+        if (response.data.LastModifiedFileId && 
+            !window.location.href.includes(`/file/${response.data.LastModifiedFileId}`)) {
+          window.location.href = `${import.meta.env.VITE_FRONTEND_URL}/file/${response.data.LastModifiedFileId}`;
           return;
         }
-        try {
-          set({ isLoading: true });
-          const response = await axios.get(
-            `${import.meta.env.VITE_PUBLIC_API_URL}/auth/status`,
-            {withCredentials: true}
-          );
-    
-          if (response.data.user) {
-            set({
-              user: response.data.user,
-              isAuthenticated: true,
-              error: null,
-              fileUrl: response.data.LastModifiedFileId,
-            });
+      }, 10);
+    } else {
+      set({
+        user: null,
+        isAuthenticated: false,
+        fileUrl: null,
+      });
+    }
+  } catch (error) {
+    set({
+      user: null,
+      isAuthenticated: false,
+      error: 'Authentication check failed',
+      fileUrl: null,
+    });
+  } finally {
+    set({ isLoading: false });
+  }
+},
 
-            setTimeout(() => {
-              if (response.data.LastModifiedFileId && !window.location.href.includes(`/file/${response.data.LastModifiedFileId}`)) {
-                window.location.href = `${import.meta.env.VITE_FRONTEND_URL}/file/${response.data.LastModifiedFileId}`;
-                return;
-              }
-            }, 10);
-          } else {
-            set({
-              user: null,
-              isAuthenticated: false,
-              fileUrl: null,
-            });
-          }
-        } catch (error) {
-          set({
-            user: null,
-            isAuthenticated: false,
-            error: 'Authentication check failed',
-            fileUrl: null,
-          });
-        } finally {
-          set({ isLoading: false });
-        }
-      },
+// Update the logout function:
+logout: async () => {
+  const { disconnect } = useWebSocketStore.getState();
+  const { setIsLoading, setToken } = get();
+  const { setData } = useSpreadsheetStore.getState();
+  
+  try {
+    setIsLoading(true);
+    
+    // Clear the token
+    setToken(null);
+    axios.defaults.headers.common['Authorization'] = '';
+    
+    set({
+      user: null,
+      isAuthenticated: false,
+      error: null,
+      fileUrl: null,
+      fileUserName: null,
+    });
+
+    await disconnect();
+    
+    // Sign out from Google as well
+    if (window.google && window.google.accounts) {
+      window.google.accounts.id.disableAutoSelect();
+    }
+    
+    window.location.reload();
+  } catch (error) {
+    set({ error: 'Failed to logout' });
+  } finally {
+    setData(MockDataHandsontable);
+    setIsLoading(false);
+  }
+},
     
       clearError: () => set({ error: null })
     }),
@@ -236,6 +247,8 @@ export const useAuthStore = create(
     }
   )
 );
+
+
 
 
 // Improved spreadsheet store with local-first updates
@@ -259,7 +272,9 @@ export const useSpreadsheetStore = create(
         await axios.post(
           `${import.meta.env.VITE_PUBLIC_API_URL}/file/rename`,
           { file_Old_name: fileId, fileNewName: newFileName },
-          { withCredentials: true }
+          { headers: {
+            Authorization: `Bearer ${localStorage.getItem('token')}`
+          } }
         );
         return await get().LoadAdminData(); // Refresh data after rename
       } catch (error) {
@@ -430,10 +445,12 @@ LoadUserStorage: async() =>{
       
 LoadAdminData: async () => {
   try {
+    console.log(localStorage.getItem("token"))
     const res = await axios.get(
       `${import.meta.env.VITE_PUBLIC_API_URL}/admin`,
       { withCredentials: true }
     );
+
 
     const emailSet = new Set();
     res.data.data.forEach((file) => {

@@ -5,6 +5,7 @@ import { sendWelcomeEmail } from "../Mailtrap/EmailControllers.js";
 import { redisCache } from "../Cache/RedisConfig.js";
 import crypto from "crypto";
 import { parseCSV } from "../utils/dbUtils.js";
+import { JWTService } from "../utils/JWTservice.js";
 import axios from "axios";
 
 // Modified to work both as a Passport strategy callback and a standalone endpoint
@@ -17,17 +18,14 @@ export const verifyAuth = async (req, res, next) => {
 
     if (isPassportStrategy) {
       // This is being called as the Passport strategy callback
-      // req is actually the accessToken in this context
       const accessToken = req;
-      // res is the refreshToken
       const refreshToken = res;
-      // next is the profile object
       const profile = next;
       
       googleId = profile.id;
       email = profile.email;
       displayName = profile.displayName;
-      picture = profile.photos?.[0]?.value || null;
+      picture = profile?.imageurl || null;
       
       // Passport requires this specific callback pattern
       const done = arguments[3];
@@ -65,23 +63,27 @@ export const verifyAuth = async (req, res, next) => {
       displayName = data.name;
       picture = data.picture;
 
-      console.log(googleId);
-
       try {
-        await handleUserData(googleId, email, displayName, picture);
+        const user = await handleUserData(googleId, email, displayName, picture);
         
-        // Get the latest user data
-        const userResult = await User.query('SELECT * FROM users WHERE google_id = $1', [googleId]);
-        const user = userResult.rows[0];
+        // Get the latest user data if not returned by handleUserData
+        let userData = user;
+        if (!userData) {
+          const userResult = await User.query('SELECT * FROM users WHERE google_id = $1', [googleId]);
+          userData = userResult.rows[0];
+        }
         
-        if (!user) {
+        if (!userData) {
           return res.status(500).json({ error: "Failed to retrieve user after creation" });
         }
 
-        // Use Passport's req.login to establish session
-        req.login(user, (err) => {
-          if (err) return res.status(500).json({ error: "Session creation failed" });
-          return res.json({ user });
+        // Generate JWT token
+        const jwtToken = JWTService.generateToken(userData);
+        
+        // Return user data and token
+        return res.json({ 
+          user: userData,
+          token: jwtToken
         });
       } catch (error) {
         console.error("Direct auth error:", error);
@@ -136,8 +138,6 @@ async function handleUserData(googleId, email, displayName, picture) {
 
     // Generate token
     const token = crypto.randomBytes(8).toString('base64');
-    
-    console.log(email, displayName);
     
     // Insert file record and send welcome email
     await Promise.all([
