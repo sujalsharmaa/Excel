@@ -153,9 +153,13 @@ app.get('/auth/google/callback',
 
 app.get('/auth/status', async (req, res) => {
 
-  if(req.isAuthenticated()){
-
+  if (!req.isAuthenticated()) {
+    return res.json({ 
+      user: null, 
+      authenticated: false 
+    });
   }
+
   if (req.user) {
     const googleId = req.user.google_id;
     const fileResult = await User.query(
