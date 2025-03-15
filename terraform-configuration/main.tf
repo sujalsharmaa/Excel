@@ -216,7 +216,7 @@ resource "aws_instance" "sheetwise-ws-backend" {
 
 
 resource "aws_s3_bucket" "sujal910992" {
-  bucket = "sujal9109"
+  bucket = "sujal91099"
 }
 
 resource "aws_s3_bucket_cors_configuration" "sujal910992_cors" {

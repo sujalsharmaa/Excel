@@ -17,8 +17,9 @@ export const UserProfile = () => {
     <div className="relative flex items-center space-x-3">
       <img
         className="w-10 h-10 rounded-full border border-gray-300 shadow-sm"
-        src={user.imageurl}
+        src={user?.imageurl}
         alt="User Profile"
+        crossOrigin='anonymous'
       />
       
       <button

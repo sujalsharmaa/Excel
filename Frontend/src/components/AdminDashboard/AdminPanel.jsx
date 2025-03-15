@@ -216,6 +216,7 @@ const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
         className="absolute right-1 w-24 h-24 rounded-full"
         src={user.imageurl}
         alt="User Profile"
+        crossOrigin="anonymous"
         style={{
           borderRadius: "50%",
           padding: "4px",

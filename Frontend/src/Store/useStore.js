@@ -18,23 +18,138 @@ export const useAuthStore = create(
       isLoading: false,
       setIsLoading: (loading) => set({ isLoading: loading }),
       writePermission: false,
-      setWritePermission: (permission) =>set({writePermission: permission}),
+      setWritePermission: (permission) => set({writePermission: permission}),
       error: null,
-      fileUrl: null, // Add fileUrl to the state
+      fileUrl: null,
       fileUserName: null,
       setfileUserName: (name) => set({ fileUserName: name }),
       setfileUrl: (url) => set({ fileUrl: url }),
 
-      login: async () => {
-        window.location.href = `${import.meta.env.VITE_PUBLIC_API_URL}/auth/google`;
+      // Initialize Google Auth when needed
+      initGoogleAuth: async () => {
+        return new Promise((resolve) => {
+          // Check if script is already loaded
+          if (document.getElementById('google-signin-script')) {
+            if (window.google && window.google.accounts) {
+              resolve();
+              return;
+            }
+          }
+          
+          const script = document.createElement('script');
+          script.src = 'https://accounts.google.com/gsi/client';
+          script.id = 'google-signin-script';
+          script.async = true;
+          script.defer = true;
+          script.onload = () => {
+            // Make sure to explicitly use the environment variable
+            const clientId = import.meta.env.VITE_GOOGLE_CLIENT_ID;
+
+            if (!clientId) {
+              console.error("Client ID is missing in environment variables");
+              set({ error: 'Google Client ID is not configured' });
+              resolve();
+              return;
+            }
+            
+            window.google.accounts.id.initialize({
+              client_id: clientId,
+              callback: (response) => {
+                get().handleGoogleLogin(response.credential);
+              },
+              auto_select: false
+            });
+            resolve();
+          };
+          document.body.appendChild(script);
+        });
       },
 
-      logout: async () => {
-        const {disconnect} = useWebSocketStore.getState()
-        const {setIsLoading} = get()
-        const { setData } = useSpreadsheetStore.getState()
+      // Render Google sign-in button
+      renderGoogleButton: (elementId) => {
+        if (!window.google || !window.google.accounts) {
+          console.error("Google accounts library not loaded yet");
+          return;
+        }
+        
+        const element = document.getElementById(elementId);
+        if (!element) {
+          console.error(`Element with ID ${elementId} not found`);
+          return;
+        }
+        
+        window.google.accounts.id.renderButton(element, { 
+          theme: 'filled_blue', 
+          size: 'large', 
+          width: '100%', 
+          text: 'signin_with' 
+        });
+      },
+
+      // Handle Google login with tokeninfo endpoint
+      handleGoogleLogin: async (idToken) => {
+        const { setIsLoading } = get();
         try {
-          setIsLoading(true)
+          setIsLoading(true);
+          
+          // Send token to backend for verification and session creation
+          const response = await axios.post(
+            `${import.meta.env.VITE_PUBLIC_API_URL}/auth/google/verify`,
+            { token: idToken },
+            { withCredentials: true }
+          );
+          
+          if (response.data.user) {
+            set({
+              user: response.data.user,
+              isAuthenticated: true,
+              fileUrl: response.data.LastModifiedFileId,
+              error: null
+            });
+            
+            // Redirect to file if available
+            if (response.data.LastModifiedFileId && 
+                !window.location.href.includes(`/file/${response.data.LastModifiedFileId}`)) {
+                  console.log("hello from redirection logic")
+              window.location.href = `${import.meta.env.VITE_FRONTEND_URL}/file/${response.data.LastModifiedFileId}`;
+            }
+          }
+        } catch (error) {
+          console.error("Google login error:", error);
+          set({ error: error.response?.data?.error || 'Authentication failed' });
+        } finally {
+          setIsLoading(false);
+        }
+      },
+
+      // For backward compatibility, maintain the redirect method
+      // but also add the new Google Sign-In prompt method
+      login: async () => {
+        try {
+          // Try the new method first
+          await get().initGoogleAuth();
+          if (window.google && window.google.accounts) {
+            window.google.accounts.id.prompt();
+            return;
+          }
+          
+          // Fall back to the old redirect method if Google Sign-In fails
+          
+          // window.location.href = `${import.meta.env.VITE_PUBLIC_API_URL}/auth/google`;
+        } catch (error) {
+          console.error("Login initialization error:", error);
+          // Fall back to the old redirect method
+          window.location.href = `${import.meta.env.VITE_PUBLIC_API_URL}/auth/google`;
+        }
+      },
+
+      // Rest of the methods remain the same
+      logout: async () => {
+        const {disconnect} = useWebSocketStore.getState();
+        const {setIsLoading} = get();
+        const { setData } = useSpreadsheetStore.getState();
+        try {
+          setIsLoading(true);
           set({
             user: null,
             isAuthenticated: false,
@@ -43,84 +158,71 @@ export const useAuthStore = create(
             fileUserName: null,
           });
   
-            await disconnect();
+          await disconnect();
 
-            set({ isLoading: true });
-            await axios.get(`${import.meta.env.VITE_PUBLIC_API_URL}/logout`, {
-              withCredentials: true
-            });
-            return;
-
+          await axios.get(`${import.meta.env.VITE_PUBLIC_API_URL}/logout`, {
+            withCredentials: true
+          });
           
-
+          // Sign out from Google as well
+          if (window.google && window.google.accounts) {
+            window.google.accounts.id.disableAutoSelect();
+          }
+          window.location.reload()
         } catch (error) {
           set({ error: 'Failed to logout' });
         } finally {
-          setData(MockDataHandsontable)
-         
-          set({ isLoading: false });
-          return
+          setData(MockDataHandsontable);
+          setIsLoading(false);
         }
       },
 
       checkAuth: async () => {
-        const {user,fileUrl} = useAuthStore.getState()
-        if (user && fileUrl){
-          console.log("checkAuth")
-          return
+        const {user, fileUrl} = useAuthStore.getState();
+        if (user && fileUrl) {
+          console.log("checkAuth");
+          return;
         }
         try {
-
-            set({ isLoading: true });
-              const response = await axios.get(
-                `${import.meta.env.VITE_PUBLIC_API_URL}/auth/status`,
-                  {withCredentials: true} 
-              
-            );
-
+          set({ isLoading: true });
+          const response = await axios.get(
+            `${import.meta.env.VITE_PUBLIC_API_URL}/auth/status`,
+            {withCredentials: true}
+          );
     
-            if (response.data.user) {
-                set({
-                    user: response.data.user,
-                    isAuthenticated: true,
-                    error: null,
-                    fileUrl: response.data.LastModifiedFileId, // Update file URL
-                });
-
-                setTimeout(() => {
-                if (response.data.LastModifiedFileId && !window.location.href.includes(`/file/${response.data.LastModifiedFileId}`)) {
-                  window.location.href = `${import.meta.env.VITE_FRONTEND_URL}/file/${response.data.LastModifiedFileId}`;
-                   
-                  return
-                 }
-                }, 10);
-
-    
-                // Redirect only if the user is not already on the file URL
-  
-            } else {
-                set({
-                    user: null,
-                    isAuthenticated: false,
-                    fileUrl: null,
-                });
-                return
-            }
-        } catch (error) {
+          if (response.data.user) {
             set({
-                user: null,
-                isAuthenticated: false,
-                error: 'Authentication check failed',
-                fileUrl: null,
+              user: response.data.user,
+              isAuthenticated: true,
+              error: null,
+              fileUrl: response.data.LastModifiedFileId,
             });
-            return
-        } finally {
-             set({ isLoading: false });
-            return
-        }
-    },
-    
 
+            setTimeout(() => {
+              if (response.data.LastModifiedFileId && !window.location.href.includes(`/file/${response.data.LastModifiedFileId}`)) {
+                window.location.href = `${import.meta.env.VITE_FRONTEND_URL}/file/${response.data.LastModifiedFileId}`;
+                return;
+              }
+            }, 10);
+          } else {
+            set({
+              user: null,
+              isAuthenticated: false,
+              fileUrl: null,
+            });
+          }
+        } catch (error) {
+          set({
+            user: null,
+            isAuthenticated: false,
+            error: 'Authentication check failed',
+            fileUrl: null,
+          });
+        } finally {
+          set({ isLoading: false });
+        }
+      },
+    
       clearError: () => set({ error: null })
     }),
     {
@@ -134,7 +236,6 @@ export const useAuthStore = create(
     }
   )
 );
-
 
 
 // Improved spreadsheet store with local-first updates

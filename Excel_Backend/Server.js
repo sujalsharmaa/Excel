@@ -5,7 +5,7 @@ import passport from "passport";
 import GoogleStrategy from "passport-google-oauth2";
 import session from "express-session";
 import dotenv from "dotenv";
-import { RegisterFlow } from "./Controllers/Controllers.js";
+import { verifyAuth } from "./Controllers/Controllers.js";
 import {createTable} from "./Model/CreateTable.js";
 import { User } from "./Model/Db_config.js";
 import cors from "cors"
@@ -14,6 +14,7 @@ import morgan from "morgan";
 import winston from "winston";
 import NodeCache from "node-cache";
 import {ElasticsearchTransport} from "winston-elasticsearch";
+import axios from "axios";
 dotenv.config();
 
 const app = express();
@@ -48,7 +49,7 @@ app.use((req, res, next) => {
 });
 
 const corsOptions = {
-    origin: process.env.FRONTEND_URL,
+    origin: [process.env.FRONTEND_URL, "http://localhost:5173"], // Allow frontend URLs
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization'],
@@ -59,13 +60,13 @@ app.use(cors(corsOptions));
 app.options('*', cors(corsOptions)); // Handle preflight requests
 app.use(bodyParser.urlencoded({ extended: true }));
 
-app.use((req, res, next) => {
-  res.header("Access-Control-Allow-Origin", "https://sujalsharma.in");
-  res.header("Access-Control-Allow-Credentials", "true");
-  res.header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
-  res.header("Access-Control-Allow-Headers", "Origin, X-Requested-With, Content-Type, Accept, Authorization");
-  next();
-});
+// app.use((req, res, next) => {
+//   res.header("Access-Control-Allow-Origin", "https://sujalsharma.in");
+//   res.header("Access-Control-Allow-Credentials", "true");
+//   res.header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
+//   res.header("Access-Control-Allow-Headers", "Origin, X-Requested-With, Content-Type, Accept, Authorization");
+//   next();
+// });
 
 
 // 1. Session middleware must come before passport
@@ -87,9 +88,17 @@ app.use(passport.session());
 passport.use(new GoogleStrategy({
     clientID: process.env.GOOGLE_CLIENT_ID,
     clientSecret: process.env.GOOGLE_CLIENT_SECRET,
-    callbackURL: `${process.env.FRONTEND_URL}/auth/google/callback`
-  }, RegisterFlow
+    callbackURL: `${process.env.BACKEND_URL}/auth/google/callback`,  // Make sure this is your backend URL, not frontend
+    passReqToCallback: false  // Set to false as our verifyAuth handles this case separately
+  }, 
+  (accessToken, refreshToken, profile, done) => {
+    // Call verifyAuth with the correct parameters for Passport strategy
+    verifyAuth(accessToken, refreshToken, profile, done);
+  }
 ));
+
+
+
 
 // 4. Serialization (updated to handle different response formats)
 passport.serializeUser((user, done) => {
@@ -126,6 +135,7 @@ passport.deserializeUser(async (googleId, done) => {
 // 5. Routes come after passport setup
 app.use(router);
 
+app.post("/auth/google/verify",verifyAuth)
 // Authentication routes
 app.get('/auth/google',
   passport.authenticate('google', { 
