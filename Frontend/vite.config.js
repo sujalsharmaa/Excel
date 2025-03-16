@@ -18,10 +18,10 @@ export default defineConfig({
       "Cross-Origin-Embedder-Policy": "require-corp"
     }
   },
-  build: {
-    rollupOptions: {
-      external: ["zustand"],
-    },
-  },
+  // build: {
+  //   rollupOptions: {
+  //     external: ["zustand","zustand/middleware"],
+  //   },
+  // },
   
 });
