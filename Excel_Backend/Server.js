@@ -218,7 +218,7 @@ app.get("/",(req,res)=>{
 })
 
 app.get("/health",(req,res)=>{
-  return res.status(200).sendFile("./health.html")
+  return res.status(200).send("health is working fine...")
 })
 
 
