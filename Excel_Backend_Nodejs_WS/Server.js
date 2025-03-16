@@ -80,7 +80,12 @@ app.use(cors());
 app.use(morgan("dev"))
 app.use(bodyParser.json());
 
-const server = http.createServer(app);
+const options = {
+  key: fs.readFileSync('./server.key'),
+  cert: fs.readFileSync('./server.crt')
+};
+
+const server = http.createServer(options,app);
 const wss = new WebSocketServer({ server});
 
 // Redis client for publishing messages
