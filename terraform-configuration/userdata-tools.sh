@@ -39,6 +39,8 @@ apt-get install npm -y
 
 npm i 
 
+
+
 # docker run -d \
 #   --name zookeeper \
 #   -p 2181:2181 \

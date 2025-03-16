@@ -1,5 +1,5 @@
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
-import ExcelClone from './components/Sheetwise';
+import {Sheetwise} from './components/Sheetwise';
 import { NotFound } from './components/NotFound';
 import AdminPanel from './components/AdminDashboard/AdminPanel';
 import PermissionDenied from './components/PermissionDenied';
@@ -15,6 +15,7 @@ import PaymentSuccessPage from './components/PaymentSuccessPage';
 
 
 
+
 export default function App() {
   const {fileUrl,user} = useAuthStore()
 
@@ -23,8 +24,8 @@ export default function App() {
       {/* Toaster should be outside Routes to work globally */}
       <Toaster position="top-center" reverseOrder={false} />
       <Routes>
-        <Route path="/" element={<ExcelClone />} />
-        <Route path="/file/:fileURL" element={<ExcelClone />} />
+        <Route path="/" element={<Sheetwise/>} />
+        <Route path="/file/:fileURL" element={<Sheetwise/>} />
         <Route path="*" element={<NotFound />} /> {/* Catch-all route for 404 pages */}
         <Route path="/documentation" element={<Documentation />} />
         <Route path="/admin" element={<AdminPanel />} />
