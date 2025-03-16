@@ -639,7 +639,7 @@ export const useWebSocketStore = create(
           setWritePermission(response.data.permission)
       
           // Initialize WebSocket if permission granted
-          const ws = new WebSocket(`${import.meta.env.VITE_WS_URL}/ws`);
+          const ws = new WebSocket(`${import.meta.env.VITE_WS_URL}`);
 
 
           ws.onopen = () => {
