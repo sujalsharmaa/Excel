@@ -178,8 +178,10 @@ const NewFileButton = () => {
       setIsGeneratingName(true);
       
       // Call the random name generator API
-      const response = await fetch('https://api.namefake.com/english-united-states/random');
-      
+      const response = await fetch('https://api.namefake.com/english-united-states/random', {
+        
+        mode: 'no-cors'
+      }); 
       if (!response.ok) {
         throw new Error('Failed to generate name');
       }
