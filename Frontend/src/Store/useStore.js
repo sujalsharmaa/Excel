@@ -204,6 +204,7 @@ logout: async () => {
   const { setData } = useSpreadsheetStore.getState();
   
   try {
+    localStorage.setItem("token","")
     setIsLoading(true);
     
     // Clear the token
