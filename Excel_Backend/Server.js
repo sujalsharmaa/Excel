@@ -217,6 +217,11 @@ app.get("/",(req,res)=>{
   res.send("hello sheetwise backend is working")
 })
 
+app.get("/health",(req,res)=>{
+  return res.status(200).sendFile("./health.html")
+})
+
+
 // Start server
 const PORT = process.env.PORT || 3000;
 const startServer = async () => {
