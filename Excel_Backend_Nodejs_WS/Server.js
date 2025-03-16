@@ -13,6 +13,7 @@ import { createClient } from "redis";
 import morgan from "morgan";
 import winston from "winston";
 import {ElasticsearchTransport} from "winston-elasticsearch";
+import fs from 'fs';
 dotenv.config();
 
 
