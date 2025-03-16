@@ -1,5 +1,5 @@
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
-import {Sheetwise} from './components/Sheetwise';
+import Sheetwise from './components/Sheetwise';
 import { NotFound } from './components/NotFound';
 import AdminPanel from './components/AdminDashboard/AdminPanel';
 import PermissionDenied from './components/PermissionDenied';
