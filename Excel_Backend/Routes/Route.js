@@ -511,10 +511,10 @@ router.post("/admin/generateToken", isAuthenticated, async (req, res) => {
     // Check for existing token
     const existingToken = await redisCache.get(`${fileId}token`);
     if (existingToken) {
-      console.log("i send data from cache =>",`http://localhost:5173/token/file/${fileId}/${existingToken}`)
+      console.log("i send data from cache =>",`${process.env.FRONTEND_URL}/token/file/${fileId}/${existingToken}`)
       return res.json({
         token: existingToken,
-        url: `http://localhost:5173/token/file/${fileId}/${existingToken}`,
+        url: `${process.env.FRONTEND_URL}/${fileId}/${existingToken}`,
         expiresAt: Date.now() - (expiresIn * 1000)
       });
     }
@@ -528,10 +528,10 @@ router.post("/admin/generateToken", isAuthenticated, async (req, res) => {
     await redisCache.expire(`${fileId}token`, expiresIn);
     
 
-    console.log("i send data from db =>",`http://localhost:5173/token/file/${fileId}/${token}`)
+    console.log("i send data from db =>",`${process.env.FRONTEND_URL}/token/file/${fileId}/${token}`)
     return res.json({
       token: token,
-      url: `http://localhost:5173/token/file/${fileId}/${token}`,
+      url: `${process.env.FRONTEND_URL}/${fileId}/${token}`,
       expiresAt: Date.now() + (expiresIn * 1000)
     });
 

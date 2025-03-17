@@ -13,7 +13,7 @@ import { createClient } from "redis";
 import morgan from "morgan";
 import winston from "winston";
 import {ElasticsearchTransport} from "winston-elasticsearch";
-import fs from 'fs';
+
 dotenv.config();
 
 
@@ -81,12 +81,8 @@ app.use(cors());
 app.use(morgan("dev"))
 app.use(bodyParser.json());
 
-const options = {
-  key: fs.readFileSync('./server.key'),
-  cert: fs.readFileSync('./server.crt')
-};
 
-const server = http.createServer(options,app);
+const server = http.createServer(app);
 const wss = new WebSocketServer({ server});
 
 // Redis client for publishing messages
