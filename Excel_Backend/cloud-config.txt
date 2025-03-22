@@ -1,0 +1,114 @@
+ [
+    {
+      "AllowedOrigins": ["https://sujalsharma.in"],
+      "AllowedMethods": ["GET", "POST", "PUT", "DELETE"],
+      "AllowedHeaders": ["*"],
+      "ExposeHeaders": ["ETag"],
+      "MaxAgeSeconds": 3000
+    }
+  ]
+
+
+
+
+
+Setting Up Proxy Integration in AWS API Gateway
+Here's a step-by-step guide to route all incoming requests to your EC2 instance while preserving the original paths:
+Step 1: Create a Proxy Route
+
+Navigate to the "Routes" section of your API Gateway
+Click "Create" to add a new route
+For the route path, enter /{proxy+} (the plus sign is important - it indicates a greedy path parameter)
+Set the HTTP method to ANY to capture all HTTP methods
+Click "Create"
+
+Step 2: Attach the Integration
+
+With your new /{proxy+} route selected, click "Attach integration"
+Select the existing integration with ID 6h2oucg (your main EC2 integration)
+Click "Attach integration"
+
+Step 3: Configure Parameter Mapping
+
+Go to the "Integrations" section
+Find and select your main integration (ID: 6h2oucg)
+Click "Edit"
+Scroll down to "Parameter mapping" and click "Create"
+Under "Request mappings", click "Add mapping"
+Set the following:
+
+Parameter type: Path
+Destination: uri.path
+Source: $request.path.proxy
+
+
+Click "Save"
+
+Step 4: Modify the Integration URI (if needed)
+
+Still in the integration edit screen
+Change the URI from http://107.21.28.245:3000 to http://107.21.28.245:3000/{proxy}
+Click "Save"
+
+Step 5: Deploy Your API
+
+Click the "Deploy" button at the top of the console
+Select your stage (or create a new one if needed)
+Click "Deploy"
+
+Step 6: Test Your Configuration
+
+Find your API's invoke URL in the stage details
+Test different paths like:
+
+https://your-api-id.execute-api.region.amazonaws.com/stage/users
+https://your-api-id.execute-api.region.amazonaws.com/stage/products/123
+
+
+
+These requests should now be forwarded to:
+
+http://107.21.28.245:3000/users
+http://107.21.28.245:3000/products/123
+
+Is there anything specific about this setup you'd like me to explain in more detail?
+
+Fix CORS Configuration in API Gateway
+
+Fix Access-Control-Allow-Origin:
+
+You've added https://sujalsharma.in as an allowed origin, but it's not being properly applied
+This field should contain domain names, not URLs
+Remove https://sujalsharma.in and add just * (to allow all origins) or properly format it
+
+
+Fix Access-Control-Allow-Headers:
+
+The https://sujalsharma.in entry is incorrect - this isn't a header
+Keep only valid header names like authorized, content-type, authorization, etc.
+Common headers to include: Content-Type, Authorization, X-Amz-Date, X-Api-Key
+
+
+Access-Control-Expose-Headers:
+
+Add any response headers you want to expose to the browser, or leave empty if none
+
+
+Access-Control-Max-Age:
+
+Set this to a value like 300 (seconds) to cache preflight results
+
+
+Deploy After Configuration:
+
+After making these changes, you must redeploy your API for them to take effect
+Many developers forget this step and wonder why CORS still fails
+
+for deploying websocket instance we are using application load balancer with http target groups 
+the trick here is to turn stickiness on 
+for ssl termination we are using cloudfront along with application load balancer.
+
+
+
+
+

@@ -18,10 +18,14 @@ export default defineConfig({
       "Cross-Origin-Embedder-Policy": "require-corp"
     }
   },
-  // build: {
-  //   rollupOptions: {
-  //     external: ["zustand","zustand/middleware"],
-  //   },
-  // },
+  server: {
+    proxy: {
+      '/excalidraw-assets': {
+        target: 'https://unpkg.com/@excalidraw/excalidraw@0.17.6/dist/excalidraw-assets-dev/',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/excalidraw-assets/, '')
+      }
+    }
+  }
   
 });

@@ -14,6 +14,7 @@ import morgan from "morgan";
 import winston from "winston";
 import {ElasticsearchTransport} from "winston-elasticsearch";
 
+
 dotenv.config();
 
 
@@ -123,13 +124,13 @@ const fileClients = new Map();
 const googleIdClients = new Map();
 const fileClientsDrawing = new Map();
 const googleIdClientsDrawing = new Map();
-
+let pipeline = redisPublisher.pipeline();
 
 async function updateDrawing(fileKey, drawingData) {
   // Create a Redis pipeline for batch processing
-  const pipeline = redisPublisher.pipeline();
+ 
 
-  // Store the current drawing state in Redis JSON
+  // // Store the current drawing state in Redis JSON
   pipeline.call(
     "JSON.SET", 
     `drawing:${fileKey}`, 
@@ -432,7 +433,8 @@ wss.on('connection', async (ws) => {
           googleIdClientsDrawing.set(data.id, ws);
         }
 
-      console.warn("Drawing update size =>", new Blob([JSON.stringify(data.scene.elements)]).size);
+    //  console.warn("Drawing update size =>", new Blob([JSON.stringify(data.scene.elements)]).size);
+
         if(new Blob([JSON.stringify(data.scene.elements)]).size <= 2 ){
           return
         }
@@ -715,9 +717,18 @@ redisSubscriber.on('message', async (channel, message) => {
 })
 
 
+// setInterval(() => {
+//   console.log('Memory stats:');
+//   console.log(`  fileClients size: ${fileClients.size}`);
+//   console.log(`  googleIdClients size: ${googleIdClients.size}`);
+//   console.log(`  fileClientsDrawing size: ${fileClientsDrawing.size}`);
+//   console.log(`  googleIdClientsDrawing size: ${googleIdClientsDrawing.size}`);
+//   console.log(`  Active WebSocket connections: ${wss.clients.size}`);
 
+// }, 3000);
 
 const PORT = process.env.PORT || 8080;
 server.listen(PORT, () => {
   console.log(`Server is running on port ${PORT}`);
 });
+

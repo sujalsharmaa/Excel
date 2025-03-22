@@ -14,8 +14,6 @@ import { MockDataHandsontable } from './Mockdata';
 import LoadingSpinner from './LoadingSpinner';
 import { useNavigate, useParams } from 'react-router-dom';
 
-
-
 registerAllModules();
 
 const Sheetwise = () => {
@@ -29,7 +27,60 @@ const Sheetwise = () => {
   const { fileURL } = useParams();
   const navigate = useNavigate();
   const [Cols, setCols] = useState(10);
+  const [isMobile, setIsMobile] = useState(false);
+  const [isTablet, setIsTablet] = useState(false);
+  const [windowSize, setWindowSize] = useState({
+    width: window.innerWidth,
+    height: window.innerHeight
+  });
 
+  // Detect device type on mount and window resize
+  useEffect(() => {
+    const handleResize = () => {
+      const width = window.innerWidth;
+      const height = window.innerHeight;
+      
+      setWindowSize({ width, height });
+      setIsMobile(width < 768);
+      setIsTablet(width >= 768 && width < 1024);
+      
+      // Adjust handsontable settings based on screen size
+      const hotInstance = hotTableRef.current?.hotInstance;
+      if (hotInstance) {
+        if (width < 768) {
+          // Mobile settings
+          hotInstance.updateSettings({
+            colWidths: 100,
+            fixedColumnsLeft: 1,
+            viewportColumnRenderingOffset: 5,
+    //        renderAllRows: false,
+            height: height - 200,
+          });
+        } else if (width >= 768 && width < 1024) {
+          // Tablet settings
+          hotInstance.updateSettings({
+            colWidths: 120,
+            fixedColumnsLeft: 2,
+            viewportColumnRenderingOffset: 10,
+    //        renderAllRows: false,
+            height: height - 180,
+          });
+        } else {
+          // Desktop settings
+          hotInstance.updateSettings({
+            colWidths: 150,
+            stretchH: 'all',
+            height: '100%',
+          });
+        }
+      }
+    };
+
+    window.addEventListener('resize', handleResize);
+    handleResize(); // Initial check
+    
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
 
   useEffect(() => {
     const fetchFile = async () => {
@@ -60,12 +111,10 @@ const Sheetwise = () => {
   );
 
   useEffect(() => {
-    console.log(theme)
     if (!socket) return;
     
     const handleMessage = async (event) => {
       let update;
-      console.log("we got message ->", new Blob([(event.data)]).size)
       if (event.data instanceof Blob) {
         const arrayBuffer = await event.data.arrayBuffer();
         const decodedData = msgpack.decode(new Uint8Array(arrayBuffer));
@@ -88,25 +137,7 @@ const Sheetwise = () => {
           break;  
         
         default:
-          if (Array.isArray(update) && update.length < 1) {
-            console.log("Applying batch updates =>>", update);
-          
-            const hotInstance = hotTableRef.current?.hotInstance;
-            if (!hotInstance) return;
-          
-            hotInstance.batch(() => {
-              update.forEach(({ row, col, value }) => {
-                const oldValue = hotInstance.getDataAtCell(row, col);
-                if (oldValue !== value) {
-                  hotInstance.setDataAtCell(row, col, value, 'apiUpdate');
-                }
-              });
-            });
-          }
-      
-          if (Array.isArray(update)) {
-            console.log("Applying async batch updates =>>", update);
-          
+          if (Array.isArray(update)) {  
             const hotInstance = hotTableRef.current?.hotInstance;
             if (!hotInstance) return;
           
@@ -134,23 +165,16 @@ const Sheetwise = () => {
   });
 
   // Function to add columns to the table
-  const addColumns = (colCount) => {
+ const addColumns = (colCount) => {
     const hotInstance = hotTableRef.current?.hotInstance;
     if (!hotInstance) return;
     
-    // Parse the input to ensure it's a number
     const numCols = parseInt(colCount, 10);
     if (isNaN(numCols) || numCols <= 0) return;
     
-    // Get current column count
     const currentColCount = hotInstance.countCols();
-    
-    // Add the columns to the table
     hotInstance.alter('insert_col_end', currentColCount - 1, numCols);
     
-    console.log(`Added ${numCols} columns. New column count: ${hotInstance.countCols()}`);
-    
-    // Notify collaborators with the actual number of columns added
     if (socket?.readyState === WebSocket.OPEN) {
       socket.send(JSON.stringify({
         type: 'COL_ADD',
@@ -168,19 +192,12 @@ const Sheetwise = () => {
     const hotInstance = hotTableRef.current?.hotInstance;
     if (!hotInstance) return;
     
-    // Parse the input to ensure it's a number
     const numRows = parseInt(rowCount, 10);
     if (isNaN(numRows) || numRows <= 0) return;
     
-    // Get current row count
     const currentRowCount = hotInstance.countRows();
-    
-    // Add the rows to the table
     hotInstance.alter('insert_row_below', currentRowCount - 1, numRows);
     
-    console.log(`Added ${numRows} rows. New row count: ${hotInstance.countRows()}`);
-    
-    // Notify collaborators with the actual number of rows added
     if (socket?.readyState === WebSocket.OPEN) {
       socket.send(JSON.stringify({
         type: 'ROW_ADD',
@@ -193,103 +210,151 @@ const Sheetwise = () => {
     }
   };
 
+  // Get table settings based on device
+  const getTableSettings = () => {
+    const baseSettings = {
+      data: data || MockDataHandsontable,
+      formulas: { engine: hyperformulaInstance },
+      rowHeaders: true,
+      colHeaders: true,
+      licenseKey: "non-commercial-and-evaluation",
+      className: theme,
+      contextMenu: !isMobile, // Disable context menu on mobile
+      dropdownMenu: !isMobile, // Disable dropdown menu on mobile
+      filters: !isMobile, // Simplified on mobile
+      manualColumnMove: !isMobile,
+      manualRowMove: !isMobile,
+      manualColumnResize: true,
+      manualRowResize: true,
+      mergeCells: true,
+      columnSorting: true,
+      search: true,
+      tabNavigation: true,
+      afterChange: (changes, source) => {
+        if (!changes || source === 'loadData' || source === 'apiUpdate') return;
+    
+        const fileKey = `${fileURL}`;
+    
+        const filteredChanges = changes
+          .filter(([row, col, oldVal, newVal]) => oldVal !== newVal)
+          .map(([row, col, oldVal, newVal]) => ({
+            type: 'UPDATE',
+            row,
+            col,
+            value: newVal,
+            id: user?.google_id,
+            fileNameFromUser: fileKey,
+            isWritePermitted: writePermission
+          }));
+    
+        if (filteredChanges.length === 0) return;
+        batchUpdatesRef.current.push(...filteredChanges);
+        clearTimeout(batchTimeoutRef.current);
+        batchTimeoutRef.current = setTimeout(sendBatchUpdates);
+      }
+    };
+
+    if (isMobile) {
+      return {
+        ...baseSettings,
+        width: '100%',
+        height: windowSize.height - 200,
+        colWidths: 100,
+        fixedColumnsLeft: 1,
+        fixedRowsTop: 1,
+        viewportColumnRenderingOffset: 5,
+//        renderAllRows: false,
+        autoWrapRow: true,
+        stretchH: 'none'
+      };
+    } else if (isTablet) {
+      return {
+        ...baseSettings,
+        width: '100%',
+        height: windowSize.height - 180,
+        colWidths: 120,
+        fixedColumnsLeft: 1,
+        fixedRowsTop: 1,
+        viewportColumnRenderingOffset: 10,
+//        renderAllRows: false,
+        autoWrapRow: true,
+        stretchH: 'none'
+      };
+    } else {
+      return {
+        ...baseSettings,
+        width: '100%',
+        height: '100%',
+        colWidths: 150,
+        stretchH: 'all',
+        autoWrapRow: true
+      };
+    }
+  };
+
   return (
-    <div className="flex flex-col">
-      {/* Header section with fixed positioning */}
+    <div className="flex flex-col h-screen">
+      {/* Header section */}
       <div className="flex-none">
         <SpreadsheetHeader hotInstance={hotTableRef.current?.hotInstance} />
       </div>
       
-      {/* Main content section with calculated padding-top */}
+      {/* Main content section */}
       <div 
-        className="flex-grow relative"
+        className="flex-grow relative overflow-hidden"
         style={{
-          paddingTop: "96px", // Adjust this value based on your header height
-          height: "calc(100vh - 120px)", // Ensure the table takes remaining height
-          overflow: "visible" 
+          paddingTop: isMobile ? "64px" : "96px",
+          height: isMobile ? `${windowSize.height - 120}px` : "calc(100vh - 120px)"
         }}
       >
         <HotTable
           ref={hotTableRef}
-          data={data || MockDataHandsontable}
-          width="100%"
-          colWidths={150}
-          stretchH="all"
-          colHeaders={true}        
-          rowHeaders={true}
-          formulas={{ engine: hyperformulaInstance }} // <-- formulas as a top-level prop
-          mergeCells={true}
-          columnSorting={true}
-          filters={true}
-          search={true}
-          tabNavigation={true}
-          contextMenu={true}
-          dropdownMenu={true}
-          manualColumnMove={true}
-          autoWrapRow={true}
-          manualRowResize={true}
-          manualColumnResize={true}
-          manualRowMove={true}
-          className={theme}
-          licenseKey="non-commercial-and-evaluation"   
-          afterChange={(changes, source) => {
-            if (!changes || source === 'loadData' || source === 'apiUpdate') return;
-        
-            const fileKey = `${fileURL}`;
-        
-            const filteredChanges = changes
-              .filter(([row, col, oldVal, newVal]) => oldVal !== newVal)
-              .map(([row, col, oldVal, newVal]) => ({
-                type: 'UPDATE',
-                row,
-                col,
-                value: newVal,
-                id: user?.google_id,
-                fileNameFromUser: fileKey,
-                isWritePermitted: writePermission
-              }));
-        
-            if (filteredChanges.length === 0) return;
-            batchUpdatesRef.current.push(...filteredChanges);
-            clearTimeout(batchTimeoutRef.current);
-            batchTimeoutRef.current = setTimeout(sendBatchUpdates);
-          }}
+          {...getTableSettings()}
         />
-        <div className='w-screen flex justify-center gap-4'>
-          <div className="flex items-center">
+        
+        {/* Controls - Responsive layout */}
+        <div className={`${isMobile ? 'w-full' : 'w-screen'} flex ${isMobile ? 'flex-col' : 'justify-center'} gap-2 p-2`}>
+          <div className={`flex items-center ${isMobile ? 'justify-center mb-2' : ''}`}>
             <input 
-              className='border-2 border-blue-600 w-16 mx-2' 
+              className='border-2 border-blue-600 w-16 mx-2 p-1 text-center' 
               type="number" 
-              defaultValue={100} 
+              defaultValue={isMobile ? 20 : 100} 
               min="1"
               onChange={(e) => setRows(e.target.value)} 
             />
             <button
-              className='bg-blue-500 p-2 rounded-md text-white hover:bg-blue-600 transition-colors'
+              className='bg-blue-500 p-2 rounded-md text-white hover:bg-blue-600 transition-colors text-sm md:text-base'
               onClick={() => addRows(Rows)}
             >
               Add {Rows} Rows
             </button>
           </div>
           
-          <div className="flex items-center">
+          <div className={`flex items-center ${isMobile ? 'justify-center' : ''}`}>
             <input 
-              className='border-2 border-blue-600 w-16 mx-2' 
+              className='border-2 border-blue-600 w-16 mx-2 p-1 text-center' 
               type="number" 
-              defaultValue={10} 
+              defaultValue={isMobile ? 5 : 10} 
               min="1"
               onChange={(e) => setCols(e.target.value)} 
             />
             <button
-              className='bg-green-500 p-2 rounded-md text-white hover:bg-green-600 transition-colors'
+              className='bg-green-500 p-2 rounded-md text-white hover:bg-green-600 transition-colors text-sm md:text-base'
               onClick={() => addColumns(Cols)}
             >
               Add {Cols} Columns
             </button>
           </div>
         </div>
+        
         {isLoading && <LoadingSpinner/>}
         
+        {/* Mobile guidance tooltip */}
+        {isMobile && (
+          <div className="fixed bottom-0 left-0 right-0 bg-blue-100 p-3 text-center text-sm border-t border-blue-300">
+            <p>Tip: Swipe to navigate, pinch to zoom. Tap and hold for cell editing.</p>
+          </div>
+        )}
       </div>
     </div>
   );
