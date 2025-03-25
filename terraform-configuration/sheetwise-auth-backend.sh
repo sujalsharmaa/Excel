@@ -28,15 +28,43 @@ unzip awscliv2.zip
 ./aws/install
 
 
+# Verify Docker installation
+echo "Docker version:"
+docker --version || { echo "Docker installation failed!"; exit 1; }
+
+
+
 git clone https://github.com/sujalsharmaa/Excel.git
 
+cd Excel/Excel_Backend
 
-cd Excel/Excel_Backend_Nodejs_WS
-
-aws s3 cp s3://my-env-bucket-terraform/ws/.env .env
+aws s3 cp s3://my-env-bucket-terraform/auth/.env .env
 chmod 600 .env
 
-docker build -t ws .
+docker build -t auth .
 
-docker run -d --env-file .env -p 80:8080 ws
+docker run -d --env-file .env -p 80:3000 auth
 
+
+
+
+# docker run -d \
+#   --name zookeeper \
+#   -p 2181:2181 \
+#   -e ZOOKEEPER_CLIENT_PORT=2181 \
+#   confluentinc/cp-zookeeper:7.0.1
+
+# docker run -d \
+#   --name kafka \
+#   -p 9092:9092 \
+#   -e KAFKA_BROKER_ID=1 \
+#   -e KAFKA_ZOOKEEPER_CONNECT=zookeeper:2181 \
+#   -e KAFKA_ADVERTISED_LISTENERS=PLAINTEXT://44.197.181.40:9092 \
+#   -e KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR=1 \
+#   -e KAFKA_AUTO_CREATE_TOPICS_ENABLE="true" \
+#   --link zookeeper:zookeeper \
+#   confluentinc/cp-kafka:7.0.1  
+
+
+
+echo "Setup complete! You can access the application on port 80."

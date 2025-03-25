@@ -182,3 +182,10 @@ Thumbs.db
 # TypeScript compiled output
 *.tsbuildinfo
 >>>>>>> 5921726 (added new features and backend)
+
+
+
+terraform-configuration/.terraform.tfstate.lock.info
+terraform-configuration/terraform.tfstate.backup
+.terraform.tfstate.lock.info
+terraform.tfstate.backup
