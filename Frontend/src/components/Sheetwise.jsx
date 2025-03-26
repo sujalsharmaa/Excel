@@ -18,7 +18,7 @@ registerAllModules();
 
 const Sheetwise = () => {
   const { data, LoadFile, setData } = useSpreadsheetStore();
-  const { socket } = useWebSocketStore();
+  const { socket,initializeWebSocket } = useWebSocketStore();
   const { user, theme, isLoading, isAuthenticated, setIsLoading, fileUrl, writePermission } = useAuthStore();
   const hotTableRef = useRef(null);
   const batchUpdatesRef = useRef([]);
@@ -33,6 +33,10 @@ const Sheetwise = () => {
     width: window.innerWidth,
     height: window.innerHeight
   });
+
+  useEffect(()=>{
+    initializeWebSocket()
+  },[Sheetwise])
 
   // Detect device type on mount and window resize
   useEffect(() => {
@@ -111,7 +115,10 @@ const Sheetwise = () => {
   );
 
   useEffect(() => {
-    if (!socket) return;
+    if (!socket) {
+      //initializewebtoken
+      return
+    };
     
     const handleMessage = async (event) => {
       let update;

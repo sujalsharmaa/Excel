@@ -27,6 +27,9 @@ apt install unzip -y
 unzip awscliv2.zip
 ./aws/install
 
+apt install nodejs -y
+apt install npm -y
+
 
 # Verify Docker installation
 echo "Docker version:"
@@ -38,12 +41,17 @@ git clone https://github.com/sujalsharmaa/Excel.git
 
 cd Excel/Excel_Backend
 
-aws s3 cp s3://my-env-bucket-terraform/auth/.env .env
+aws s3 cp s3://my-env-bucket-terraform1/auth/.env .env
 chmod 600 .env
 
-docker build -t auth .
+npm i pm2 -g
+npm i
 
-docker run -d --env-file .env -p 80:3000 auth
+pm2 start Server.js --max-memory-restart 250 -i max 
+
+# docker build -t auth .
+
+# docker run -d --env-file .env -p 80:3000 auth
 
 
 

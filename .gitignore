@@ -189,3 +189,4 @@ terraform-configuration/.terraform.tfstate.lock.info
 terraform-configuration/terraform.tfstate.backup
 .terraform.tfstate.lock.info
 terraform.tfstate.backup
+terraform-configuration/.terraform/providers/registry.terraform.io/hashicorp/random/

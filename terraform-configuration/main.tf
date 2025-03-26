@@ -1,3 +1,5 @@
+#file1
+
 # VPC
 resource "aws_vpc" "main" {
   cidr_block           = "10.0.0.0/16"
@@ -191,6 +193,89 @@ resource "aws_security_group" "ec2_sg" {
 }
 
 
+resource "random_string" "bucket_suffix" {
+  length  = 8
+  special = false
+  upper   = false
+}
+
+resource "aws_s3_bucket" "random_bucket" {
+  bucket = "my-bucket-${random_string.bucket_suffix.result}"
+  acl    = "private"
+}
+
+
+resource "aws_s3_bucket" "env_bucket" {
+  bucket = "my-env-bucket-terraform1"
+  acl    = "private" # Keep it secure
+  depends_on = [ aws_s3_bucket.random_bucket ]
+}
+
+resource "aws_s3_bucket_object" "env_file_auth" {
+  bucket = aws_s3_bucket.env_bucket.id
+  key    = "auth/.env"
+  source = "../Excel_Backend/.env"
+  acl    = "private"
+}
+
+resource "aws_s3_bucket_object" "env_file_ws" {
+  bucket = aws_s3_bucket.env_bucket.id
+  key    = "ws/.env"
+  source = "../Excel_Backend_Nodejs_WS/.env"
+  acl    = "private"
+}
+
+
+
+resource "aws_iam_role" "s3_access_role" {
+  name = "s3-env-role"
+
+  assume_role_policy = <<EOF
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Principal": {
+        "Service": "ec2.amazonaws.com"
+      },
+      "Action": "sts:AssumeRole"
+    }
+  ]
+}
+EOF
+}
+
+
+resource "aws_iam_policy" "s3_read_policy" {
+  name        = "S3ReadPolicy"
+  description = "Allow EC2 to read .env from S3"
+
+  policy = <<EOF
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": ["s3:GetObject"],
+      "Resource": "arn:aws:s3:::${aws_s3_bucket.env_bucket.id}/*"
+    }
+  ]
+}
+EOF
+}
+
+resource "aws_iam_role_policy_attachment" "attach_policy" {
+  policy_arn = aws_iam_policy.s3_read_policy.arn
+  role       = aws_iam_role.s3_access_role.name
+}
+
+resource "aws_iam_instance_profile" "instance_profile" {
+  name = "s3-access-profile"
+  role = aws_iam_role.s3_access_role.name
+}
+
+
 
 
 # Postgres Redis and Elasticsearch
@@ -338,6 +423,10 @@ resource "aws_lb_target_group" "websocket_service" {
   port     = 80
   protocol = "HTTP"
   vpc_id   = aws_vpc.main.id
+  stickiness {
+    enabled = true
+    type = "lb_cookie"
+  }
   tags = {
     Name        = "websocket-target-group"
     Environment = local.env
@@ -425,7 +514,7 @@ resource "aws_cloudwatch_metric_alarm" "websocket_cpu_high" {
     AutoScalingGroupName = aws_autoscaling_group.websocket_asg.name
   }
 
-  alarm_description = "This metric monitors python ec2 cpu utilization"
+  alarm_description = "This metric monitors websocket ec2 cpu utilization"
   alarm_actions     = [aws_autoscaling_policy.websocket_scale_up.arn]
 }
 
@@ -473,6 +562,7 @@ resource "aws_lb" "nodejs-lb" {
   load_balancer_type = "application"
   security_groups    = [aws_security_group.alb_sg.id]
   subnets            = [aws_subnet.public_zone1.id, aws_subnet.public_zone2.id]
+
   tags = {
     Name        = "nodejs-load-balancer"
     Environment = local.env
@@ -501,19 +591,18 @@ resource "aws_lb_listener" "http" {
     type             = "forward"
     target_group_arn = aws_lb_target_group.nodejs_service.arn
   }
-  depends_on = [ aws_lb_target_group.nodejs_service ]
 }
 
 resource "aws_lb_listener" "websocket-listener" {
   load_balancer_arn = aws_lb.websocket-lb.arn
   port              = 80
   protocol          = "HTTP"
+
   default_action {
     type             = "forward"
     target_group_arn = aws_lb_target_group.websocket_service.arn
   }
 }
-
 
 # Postgres Redis ElasticSearch
 resource "aws_route53_zone" "backend_redis" {
@@ -538,200 +627,175 @@ resource "aws_route53_record" "backend_redis_record" {
 
 
 
-# resource "aws_cloudwatch_dashboard" "infrastructure_dashboard" {
-#   dashboard_name = "${local.env}-advanced-infrastructure-dashboard"
+resource "aws_cloudwatch_dashboard" "infrastructure_dashboard" {
+  dashboard_name = "${local.env}-advanced-infrastructure-dashboard"
 
-#   dashboard_body = jsonencode({
-#     widgets = [
-#       // EC2 Metrics - Node.js ASG
-#       {
-#         type   = "metric",
-#         x      = 0,
-#         y      = 0,
-#         width  = 12,
-#         height = 6,
-#         properties = {
-#           metrics = [
-#             ["AWS/EC2",
-#              "CPUUtilization",
-#               "AutoScalingGroupName", 
-#               "${aws_autoscaling_group.nodejs_asg.id}"],
-#             [".", "NetworkIn", ".", "."],
-#             [".", "NetworkOut", ".", "."],
-#             [".", "DiskReadOps", ".", "."],
-#             [".", "DiskWriteOps", ".", "."],
-#             [".", "StatusCheckFailed", ".", "."]
-#           ],
-#           view    = "timeSeries",
-#           stacked = false,
-#           region  = "${local.region}",
-#           title   = "Node.js Server - Detailed Metrics",
-#           period  = 300
-#         }
-#       },
+  dashboard_body = jsonencode({
+    widgets = [
+      // EC2 Metrics - Node.js ASG
+      {
+        type   = "metric",
+        x      = 0,
+        y      = 0,
+        width  = 12,
+        height = 6,
+        properties = {
+          metrics = [
+            ["AWS/EC2",
+             "CPUUtilization",
+              "AutoScalingGroupName", 
+              "${aws_autoscaling_group.nodejs_asg.id}"],
+            [".", "NetworkIn", ".", "."],
+            [".", "NetworkOut", ".", "."],
+            [".", "DiskReadOps", ".", "."],
+            [".", "DiskWriteOps", ".", "."],
+            [".", "StatusCheckFailed", ".", "."]
+          ],
+          view    = "timeSeries",
+          stacked = false,
+          region  = "${local.region}",
+          title   = "Node.js Server - Detailed Metrics",
+          period  = 300
+        }
+      },
       
-#       // EC2 Metrics - Python ASG
-#       {
-#         type   = "metric",
-#         x      = 12,
-#         y      = 0,
-#         width  = 12,
-#         height = 6,
-#         properties = {
-#           metrics = [
-#             ["AWS/EC2", "CPUUtilization", "AutoScalingGroupName", "${aws_autoscaling_group.python_asg.name}"],
-#             [".", "NetworkIn", ".", "."],
-#             [".", "NetworkOut", ".", "."],
-#             [".", "DiskReadOps", ".", "."],
-#             [".", "DiskWriteOps", ".", "."],
-#             [".", "StatusCheckFailed", ".", "."]
-#           ],
-#           view    = "timeSeries",
-#           stacked = false,
-#           region  = "${local.region}",
-#           title   = "Python Server - Detailed Metrics",
-#           period  = 300
-#         }
-#       },
-      
-#       // RDS Metrics
-#       {
-#         type   = "metric",
-#         x      = 0,
-#         y      = 6,
-#         width  = 12,
-#         height = 6,
-#         properties = {
-#           metrics = [
-#             ["AWS/RDS", "CPUUtilization", "DBInstanceIdentifier", aws_db_instance.postgres.identifier],
-#             [".", "DatabaseConnections", ".", "."],
-#             [".", "FreeStorageSpace", ".", "."],
-#             [".", "ReadIOPS", ".", "."],
-#             [".", "WriteIOPS", ".", "."],
-#             [".", "EngineUptime", ".", "."]
-#           ],
-#           view    = "timeSeries",
-#           stacked = false,
-#           region  = "${local.region}",
-#           title   = "PostgreSQL RDS - Advanced Metrics",
-#           period  = 300
-#         }
-#       },
-      
-#       // Load Balancer Metrics - Node.js
-#       {
-#         type   = "metric",
-#         x      = 12,
-#         y      = 6,
-#         width  = 12,
-#         height = 6,
-#         properties = {
-#           metrics = [
-#             ["AWS/ApplicationELB", "RequestCount", "LoadBalancer", aws_lb.nodejs-lb.arn],
-#             [".", "TargetResponseTime", ".", "."],
-#             [".", "HTTPCode_Target_4XX_Count", ".", "."],
-#             [".", "HTTPCode_Target_5XX_Count", ".", "."],
-#             [".", "HealthyHostCount", ".", "."],
-#             [".", "UnHealthyHostCount", ".", "."],
-#             [".", "ActiveConnectionCount", ".", "."],
-#             [".", "ProcessedBytes", ".", "."]
-#           ],
-#           view    = "timeSeries",
-#           stacked = false,
-#           region  = "${local.region}",
-#           title   = "Node.js Load Balancer - Detailed Metrics",
-#           period  = 300
-#         }
-#       },
-      
-#       // Load Balancer Metrics - Python
-#       {
-#         type   = "metric",
-#         x      = 0,
-#         y      = 12,
-#         width  = 12,
-#         height = 6,
-#         properties = {
-#           metrics = [
-#             ["AWS/ApplicationELB", "RequestCount", "LoadBalancer", aws_lb.python-lb.arn],
-#             [".", "TargetResponseTime", ".", "."],
-#             [".", "HTTPCode_Target_4XX_Count", ".", "."],
-#             [".", "HTTPCode_Target_5XX_Count", ".", "."],
-#             [".", "HealthyHostCount", ".", "."],
-#             [".", "UnHealthyHostCount", ".", "."],
-#             [".", "ActiveConnectionCount", ".", "."],
-#             [".", "ProcessedBytes", ".", "."]
-#           ],
-#           view    = "timeSeries",
-#           stacked = false,
-#           region  = "${local.region}",
-#           title   = "Python Load Balancer - Detailed Metrics",
-#           period  = 300
-#         }
-#       },
-      
-#       // Auto Scaling Group Metrics
-#       {
-#         type   = "metric",
-#         x      = 12,
-#         y      = 12,
-#         width  = 12,
-#         height = 6,
-#         properties = {
-#           metrics = [
-#             ["AWS/AutoScaling", "GroupTotalInstances", "AutoScalingGroupName", aws_autoscaling_group.nodejs_asg.name],
-#             [".", "GroupInServiceInstances", ".", "."],
-#             [".", "GroupPendingInstances", ".", "."],
-#             [".", "GroupTerminatingInstances", ".", "."],
-#             [".", "GroupTotalInstances", "AutoScalingGroupName", aws_autoscaling_group.python_asg.name],
-#             [".", "GroupInServiceInstances", ".", "."],
-#             [".", "GroupPendingInstances", ".", "."],
-#             [".", "GroupTerminatingInstances", ".", "."]
-#           ],
-#           view    = "timeSeries",
-#           stacked = false,
-#           region  = "${local.region}",
-#           title   = "Auto Scaling Group - Comprehensive Metrics",
-#           period  = 300
-#         }
-#       },
-      
-      
-#       // Network Metrics
-#       {
-#         type   = "metric",
-#         x      = 12,
-#         y      = 18,
-#         width  = 12,
-#         height = 6,
-#         properties = {
-#           metrics = [
-#             ["AWS/VPC", "ActiveConnections", "VpcId", aws_vpc.main.id],
-#             [".", "PacketsIn", ".", "."],
-#             [".", "PacketsOut", ".", "."],
-#             ["AWS/NATGateway", "BytesOut", "NatGatewayId", aws_nat_gateway.nat.id],
-#             [".", "BytesIn", ".", "."],
-#             [".", "PacketsOut", ".", "."]
-#           ],
-#           view    = "timeSeries",
-#           stacked = false,
-#           region  = "${local.region}",
-#           title   = "Network & NAT Gateway Metrics",
-#           period  = 300
-#         }
-#       }
-#     ]
-#   })
-# }
+      // EC2 Metrics - websocket ASG
+      {
+        type   = "metric",
+        x      = 12,
+        y      = 0,
+        width  = 12,
+        height = 6,
+        properties = {
+          metrics = [
+            ["AWS/EC2", "CPUUtilization", "AutoScalingGroupName", "${aws_autoscaling_group.websocket_asg.name}"],
+            [".", "NetworkIn", ".", "."],
+            [".", "NetworkOut", ".", "."],
+            [".", "DiskReadOps", ".", "."],
+            [".", "DiskWriteOps", ".", "."],
+            [".", "StatusCheckFailed", ".", "."]
+          ],
+          view    = "timeSeries",
+          stacked = false,
+          region  = "${local.region}",
+          title   = "websocket Server - Detailed Metrics",
+          period  = 300
+        }
+      },
 
-# # Data source for current region
-# data "aws_region" "current" {}
+      
+      
+      // Load Balancer Metrics - Node.js
+      {
+        type   = "metric",
+        x      = 12,
+        y      = 6,
+        width  = 12,
+        height = 6,
+        properties = {
+          metrics = [
+            ["AWS/ApplicationELB", "RequestCount", "LoadBalancer", "${aws_lb.nodejs-lb.arn}"],
+            [".", "TargetResponseTime", ".", "."],
+            [".", "HTTPCode_Target_4XX_Count", ".", "."],
+            [".", "HTTPCode_Target_5XX_Count", ".", "."],
+            [".", "HealthyHostCount", ".", "."],
+            [".", "UnHealthyHostCount", ".", "."],
+            [".", "ActiveConnectionCount", ".", "."],
+            [".", "ProcessedBytes", ".", "."]
+          ],
+          view    = "timeSeries",
+          stacked = false,
+          region  = "${local.region}",
+          title   = "Node.js Load Balancer - Detailed Metrics",
+          period  = 300
+        }
+      },
+      
+      // Load Balancer Metrics - websocket
+      {
+        type   = "metric",
+        x      = 0,
+        y      = 12,
+        width  = 12,
+        height = 6,
+        properties = {
+          metrics = [
+            ["AWS/ApplicationELB", "RequestCount", "LoadBalancer", "${aws_lb.websocket-lb.arn}"],
+            [".", "TargetResponseTime", ".", "."],
+            [".", "HTTPCode_Target_4XX_Count", ".", "."],
+            [".", "HTTPCode_Target_5XX_Count", ".", "."],
+            [".", "HealthyHostCount", ".", "."],
+            [".", "UnHealthyHostCount", ".", "."],
+            [".", "ActiveConnectionCount", ".", "."],
+            [".", "ProcessedBytes", ".", "."]
+          ],
+          view    = "timeSeries",
+          stacked = false,
+          region  = "${local.region}",
+          title   = "websocket Load Balancer - Detailed Metrics",
+          period  = 300
+        }
+      },
+      
+      // Auto Scaling Group Metrics
+      {
+        type   = "metric",
+        x      = 12,
+        y      = 12,
+        width  = 12,
+        height = 6,
+        properties = {
+          metrics = [
+            ["AWS/AutoScaling", "GroupTotalInstances", "AutoScalingGroupName", "${aws_autoscaling_group.nodejs_asg.name}"],
+            [".", "GroupInServiceInstances", ".", "."],
+            [".", "GroupPendingInstances", ".", "."],
+            [".", "GroupTerminatingInstances", ".", "."],
+            [".", "GroupTotalInstances", "AutoScalingGroupName", "${aws_autoscaling_group.websocket_asg.name}"],
+            [".", "GroupInServiceInstances", ".", "."],
+            [".", "GroupPendingInstances", ".", "."],
+            [".", "GroupTerminatingInstances", ".", "."]
+          ],
+          view    = "timeSeries",
+          stacked = false,
+          region  = "${local.region}",
+          title   = "Auto Scaling Group - Comprehensive Metrics",
+          period  = 300
+        }
+      },
+      
+      
+      // Network Metrics
+      {
+        type   = "metric",
+        x      = 12,
+        y      = 18,
+        width  = 12,
+        height = 6,
+        properties = {
+          metrics = [
+            ["AWS/VPC", "ActiveConnections", "VpcId", "${aws_vpc.main.id}"],
+            [".", "PacketsIn", ".", "."],
+            [".", "PacketsOut", ".", "."],
+            ["AWS/NATGateway", "BytesOut", "NatGatewayId", "${aws_nat_gateway.nat.id}"],
+            [".", "BytesIn", ".", "."],
+            [".", "PacketsOut", ".", "."]
+          ],
+          view    = "timeSeries",
+          stacked = false,
+          region  = "${local.region}",
+          title   = "Network & NAT Gateway Metrics",
+          period  = 300
+        }
+      }
+    ]
+  })
+}
 
-# # Output the dashboard name
-# output "cloudwatch_dashboard_name" {
-#   value       = aws_cloudwatch_dashboard.infrastructure_dashboard.dashboard_arn
-#   description = "Name of the created advanced CloudWatch dashboard"
-# }
+# Output the dashboard name
+output "cloudwatch_dashboard_name" {
+  value       = aws_cloudwatch_dashboard.infrastructure_dashboard.dashboard_arn
+  description = "Name of the created advanced CloudWatch dashboard"
+}
 
 
 # # 1. Create HTTP API Gateway
@@ -776,7 +840,8 @@ output "api_gateway_backend_url" {
 }
 
 resource "aws_s3_bucket" "sujal910992" {
-  bucket = "sujal9109"
+  bucket = "sujal91099"
+  depends_on = [ aws_s3_bucket.random_bucket ]
 }
 
 resource "aws_s3_bucket_cors_configuration" "sujal910992_cors" {
@@ -797,75 +862,6 @@ resource "aws_s3_bucket_cors_configuration" "sujal910992_cors" {
 
 
 
-resource "aws_s3_bucket" "env_bucket" {
-  bucket = "my-env-bucket-terraform"
-
-  acl    = "private" # Keep it secure
-}
-
-resource "aws_s3_bucket_object" "env_file_auth" {
-  bucket = aws_s3_bucket.env_bucket.id
-  key    = "auth/.env"
-  source = "../Excel_Backend/.env"
-  acl    = "private"
-}
-
-resource "aws_s3_bucket_object" "env_file_ws" {
-  bucket = aws_s3_bucket.env_bucket.id
-  key    = "ws/.env"
-  source = "../Excel_Backend_Nodejs_WS/.env"
-  acl    = "private"
-}
-
-
-
-resource "aws_iam_role" "s3_access_role" {
-  name = "s3-env-role"
-
-  assume_role_policy = <<EOF
-{
-  "Version": "2012-10-17",
-  "Statement": [
-    {
-      "Effect": "Allow",
-      "Principal": {
-        "Service": "ec2.amazonaws.com"
-      },
-      "Action": "sts:AssumeRole"
-    }
-  ]
-}
-EOF
-}
-
-
-resource "aws_iam_policy" "s3_read_policy" {
-  name        = "S3ReadPolicy"
-  description = "Allow EC2 to read .env from S3"
-
-  policy = <<EOF
-{
-  "Version": "2012-10-17",
-  "Statement": [
-    {
-      "Effect": "Allow",
-      "Action": ["s3:GetObject"],
-      "Resource": "arn:aws:s3:::${aws_s3_bucket.env_bucket.id}/*"
-    }
-  ]
-}
-EOF
-}
-
-resource "aws_iam_role_policy_attachment" "attach_policy" {
-  policy_arn = aws_iam_policy.s3_read_policy.arn
-  role       = aws_iam_role.s3_access_role.name
-}
-
-resource "aws_iam_instance_profile" "instance_profile" {
-  name = "s3-access-profile"
-  role = aws_iam_role.s3_access_role.name
-}
 
 
 # CloudFront Distribution
@@ -889,7 +885,7 @@ resource "aws_cloudfront_distribution" "cdn" {
   enabled = true
   
   default_cache_behavior {
-    target_origin_id       = "NodeJSALB"
+    target_origin_id = "WebSocketALB"  # Was "NodeJSALB"
     viewer_protocol_policy = "redirect-to-https"
     
     # Allow all HTTP methods
@@ -909,6 +905,7 @@ resource "aws_cloudfront_distribution" "cdn" {
         forward = "none"
       }
     }
+    
 
   }
 
@@ -922,10 +919,7 @@ resource "aws_cloudfront_distribution" "cdn" {
     cloudfront_default_certificate = true
   }
 
-  tags = {
-    Name        = "cdn-distribution"
-    Environment = local.env
-  }
+  depends_on = [aws_lb.websocket-lb]
 }
 
 output "aws_cloudfront_distribution" {

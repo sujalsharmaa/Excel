@@ -88,7 +88,7 @@ app.use(passport.session());
 passport.use(new GoogleStrategy({
     clientID: process.env.GOOGLE_CLIENT_ID,
     clientSecret: process.env.GOOGLE_CLIENT_SECRET,
-    callbackURL: `${process.env.BACKEND_URL}/auth/google/callback`,  // Make sure this is your backend URL, not frontend
+    callbackURL: `${process.env.FRONTEND_URL}/auth/google/callback`,  // Make sure this is your backend URL, not frontend
     passReqToCallback: false  // Set to false as our verifyAuth handles this case separately
   }, 
   (accessToken, refreshToken, profile, done) => {

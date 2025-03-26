@@ -27,16 +27,25 @@ apt install unzip -y
 unzip awscliv2.zip
 ./aws/install
 
+apt install nodejs -y
+apt install npm -y
 
 git clone https://github.com/sujalsharmaa/Excel.git
 
 
 cd Excel/Excel_Backend_Nodejs_WS
 
-aws s3 cp s3://my-env-bucket-terraform/ws/.env .env
+aws s3 cp s3://my-env-bucket-terraform1/ws/.env .env
 chmod 600 .env
+npm i
+npm i pm2 -g
 
-docker build -t ws .
 
-docker run -d --env-file .env -p 80:8080 ws
+pm2 start Server.js --max-memory-restart 250 -i max 
+
+
+
+# docker build -t ws .
+
+# docker run -d --env-file .env -p 80:8080 ws
 

@@ -4,7 +4,7 @@ import dotenv from "dotenv"
 dotenv.config()
 
 const redisConfig = {
-  host: process.env.REDIS_HOST || '127.0.0.1',
+  host: process.env.redis_host || '127.0.0.1',
   port: process.env.REDIS_PORT || 6379,
 };
 
