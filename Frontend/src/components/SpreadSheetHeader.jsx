@@ -38,6 +38,10 @@
     const [isSelectingCells, setIsSelectingCells] = useState(false);
     const {isUploading, setIsUploading} = useSpreadsheetStore();
     const [textColor, setTextColor] = useState('#000000'); // Default black text
+    const [Cols, setCols] = useState(1);
+    const [Rows, setRows] = useState(10);
+    const {socket} = useWebSocketStore()
+
     usePreventNavigation();
     useEffect(() => {
       if (hotInstance && isSelectingCells) {
@@ -56,6 +60,50 @@
         };
       }
     }, [hotInstance, isSelectingCells]);
+
+      // Function to add columns to the table
+ const addColumns = (colCount) => {
+  if (!hotInstance) return;
+  
+  const numCols = parseInt(colCount, 10);
+  if (isNaN(numCols) || numCols <= 0) return;
+  
+  const currentColCount = hotInstance.countCols();
+  hotInstance.alter('insert_col_end', currentColCount - 1, numCols);
+  
+  if (socket?.readyState === WebSocket.OPEN) {
+    socket.send(JSON.stringify({
+      type: 'COL_ADD',
+      startCol: currentColCount,
+      amount: numCols,
+      id: user?.google_id,
+      fileNameFromUser: fileURL,
+      isWritePermitted: writePermission
+    }));
+  }
+};  
+
+// Function to add rows to the table
+const addRows = (rowCount) => {
+  if (!hotInstance) return;
+  
+  const numRows = parseInt(rowCount, 10);
+  if (isNaN(numRows) || numRows <= 0) return;
+  
+  const currentRowCount = hotInstance.countRows();
+  hotInstance.alter('insert_row_below', currentRowCount - 1, numRows);
+  
+  if (socket?.readyState === WebSocket.OPEN) {
+    socket.send(JSON.stringify({
+      type: 'ROW_ADD',
+      startRow: currentRowCount,
+      amount: numRows,
+      id: user?.google_id,
+      fileNameFromUser: fileURL,
+      isWritePermitted: writePermission
+    }));
+  }
+};
 
     const handleExportCSV = () => {
       if (!hotInstance) return;
@@ -186,6 +234,8 @@
         };
       }
     }, [hotInstance]);
+
+            
     
     // Modify the font size styling function
     const applyFontSizeStyle = (size) => {
@@ -265,13 +315,44 @@
           <div className="py-1 px-4 text-white flex flex-wrap items-center justify-between gap-4 md:gap-6 shadow-md w-full bg-gray-900">
   
   {/* Left Section: Logo & Theme Selector */}
-  <div className="flex flex-wrap items-center gap-4">
-    <img 
+  <div className="flex flex-wrap items-center gap-2">
+
+    { <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="default" className="bg-gray-900 text-white w-[185px] rounded-none h-8 focus:outline-none" >
+              <img 
       className="w-24 sm:w-32 md:w-40"
       src="/sheetwise-high-resolution-logo.png" 
       alt="Sheetwise Logo"
     />
+                <ChevronDown className="w-4 h-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent
+                style={{ zIndex: 1200 }}
+            className="w-48 bg-white shadow-lg rounded-md border border-gray-200">
+             <DropdownMenuItem 
+                  onClick={()=>navigate("/contact_us")}
+      
+                className={`hover:bg-red-100 cursor-pointer ${isUploading ? "opacity-50 cursor-not-allowed" : ""}`}
+                disabled={isUploading}
+              >
+                <Navigation />
+                Contact Us
+              </DropdownMenuItem>
 
+              <DropdownMenuItem 
+                  onClick={()=>navigate("/documentation")}
+      
+                className={`hover:bg-red-100 cursor-pointer ${isUploading ? "opacity-50 cursor-not-allowed" : ""}`}
+                disabled={isUploading}
+              >
+                <Navigation />
+                Documentation
+              </DropdownMenuItem>
+
+            </DropdownMenuContent>
+          </DropdownMenu> }
 
 
 
@@ -290,6 +371,7 @@
     </select>
 
     <ColumnTypeSelector hotInstance={hotInstance} />
+
   </div>
 
   {/* Center Section: Color Selection */}
@@ -387,39 +469,7 @@
         {/* Left Section */}
         <div className="flex items-center gap-4">
 
-        <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="default" className="bg-pink-600 hover:bg-red-700 text-white" >
-         
-                More
-                <ChevronDown className="w-4 h-4 ml-2" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent
-                style={{ zIndex: 1200 }}
-            className="w-48 bg-white shadow-lg rounded-md border border-gray-200">
-             <DropdownMenuItem 
-                  onClick={()=>navigate("/contact_us")}
-      
-                className={`hover:bg-red-100 cursor-pointer ${isUploading ? "opacity-50 cursor-not-allowed" : ""}`}
-                disabled={isUploading}
-              >
-                <Navigation />
-                Contact Us
-              </DropdownMenuItem>
 
-              <DropdownMenuItem 
-                  onClick={()=>navigate("/documentation")}
-      
-                className={`hover:bg-red-100 cursor-pointer ${isUploading ? "opacity-50 cursor-not-allowed" : ""}`}
-                disabled={isUploading}
-              >
-                <Navigation />
-                Documentation
-              </DropdownMenuItem>
-
-            </DropdownMenuContent>
-          </DropdownMenu>
           {/* Logo */}
 
 
@@ -486,6 +536,34 @@
           
         </div>
 
+         <input 
+              className='border-2 border-blue-600 w-16 p-1 text-center' 
+              type="number" 
+              defaultValue={10} 
+              min="1"
+              onChange={(e) => setRows(e.target.value)} 
+            />
+            <button
+              className='bg-blue-500 p-1 rounded-md text-white hover:bg-blue-600 transition-colors md:text-base'
+              onClick={() => addRows(Rows)}
+            >
+              Add {Rows} Rows
+            </button>
+
+            <input 
+              className='border-2 border-blue-600 w-16 mx-2 p-1 text-center' 
+              type="number" 
+              defaultValue={1} 
+              min="1"
+              onChange={(e) => setCols(e.target.value)} 
+            />
+            <button
+              className='bg-green-500 p-1 rounded-md text-white hover:bg-green-600 transition-colors text-sm md:text-base'
+              onClick={() => addColumns(Cols)}
+            >
+              Add {Cols} Columns
+            </button>    
+
         {/* Right Section */}
         <div className="flex items-center gap-4">
           {/* Search Input */}
@@ -496,7 +574,7 @@
               value={searchQuery}
               onChange={(e) => handleSearch(e.target.value)}
               placeholder="Search spreadsheet..."
-              className="pl-10 w-full sm:w-64 md:w-80 lg:w-76 bg-white rounded-md focus:ring-2 focus:ring-green-500 focus:outline-none transition-all"
+              className="pl-10 w-full sm:w-64 md:w-80 lg:w-44 bg-white rounded-md focus:ring-2 focus:ring-green-500 focus:outline-none transition-all"
             />
 
           </div>
