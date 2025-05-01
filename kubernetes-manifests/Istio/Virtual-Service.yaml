@@ -1,0 +1,27 @@
+apiVersion: networking.istio.io/v1alpha3
+kind: VirtualService
+metadata:
+  name: backend-virtualservice
+spec:
+  hosts:
+    - "*"
+  gateways:
+    - sheetwise-gateway
+  http:
+    - match:
+        - uri:
+            prefix: /api
+      route:
+        - destination:
+            host: backend-nodejs-service.default.svc.cluster.local
+            port:
+              number: 3000
+  tcp:
+    - match:
+        - uri:
+            prefix: /
+      route:
+        - destination:
+            host: backend-ws.default.svc.cluster.local
+            port:
+              number: 8080
