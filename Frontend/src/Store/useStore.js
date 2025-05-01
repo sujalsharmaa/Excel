@@ -656,6 +656,7 @@ export const useWebSocketStore = create(
                 type: 'INIT',
                 userID: user.google_id,
                 fileName: fileUrl
+                
               }))
             }
             return

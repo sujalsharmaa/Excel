@@ -18,29 +18,29 @@ import {ElasticsearchTransport} from "winston-elasticsearch";
 dotenv.config();
 
 
-// Elasticsearch Transport Configuration
-const esTransportOpts = {
-  level: 'info', // Log level (can be error, warn, info, etc.)
-  clientOpts: {
-    node: `http://${process.env.ELASTICSEARCH_URL}`  || "http://localhost:9200", // Your Elasticsearch URL
-  },
-  indexPrefix: "websocket-logs", // Index name in Elasticsearch
-};
+// // Elasticsearch Transport Configuration
+// const esTransportOpts = {
+//   level: 'info', // Log level (can be error, warn, info, etc.)
+//   clientOpts: {
+//     node: `http://${process.env.ELASTICSEARCH_URL}`  || "http://localhost:9200", // Your Elasticsearch URL
+//   },
+//   indexPrefix: "websocket-logs", // Index name in Elasticsearch
+// };
 
-const esTransport = new ElasticsearchTransport(esTransportOpts);
+// const esTransport = new ElasticsearchTransport(esTransportOpts);
 
 // Winston Logger Setup
-const logger = winston.createLogger({
-  level: "info",
-  format: winston.format.json(),
-  transports: [
-    new winston.transports.Console(), // Log to console
-    esTransport, // Log to Elasticsearch
-  ],
-});
+// const logger = winston.createLogger({
+//   level: "info",
+//   format: winston.format.json(),
+//   transports: [
+//     new winston.transports.Console(), // Log to console
+//     esTransport, // Log to Elasticsearch
+//   ],
+// });
 
-// Log on Startup
-logger.info("WebSocket App Started", { timestamp: new Date().toISOString() });
+// // Log on Startup
+// logger.info("WebSocket App Started", { timestamp: new Date().toISOString() });
 
 const { Pool } = pkg;
 
@@ -210,11 +210,11 @@ const uploadAndCleanup = async (fileName) => {
 
 wss.on('connection', async (ws) => {
   console.log("Client connected");
-  logger.info("New WebSocket client connected");
+ // logger.info("New WebSocket client connected");
 
   ws.on('message', async (message) => {
     const data = JSON.parse(message);
-    logger.info("Received message", { message });
+   // logger.info("Received message", { message });
    // console.log("Message received from client", data);
 
     switch (data.type) {
@@ -433,9 +433,10 @@ wss.on('connection', async (ws) => {
           googleIdClientsDrawing.set(data.id, ws);
         }
 
-    //  console.warn("Drawing update size =>", new Blob([JSON.stringify(data.scene.elements)]).size);
+       console.warn("Drawing update size =>", new Blob([JSON.stringify(data.scene.elements)]).size);
 
-        if(new Blob([JSON.stringify(data.scene.elements)]).size <= 2 ){
+        if(new Blob([JSON.stringify(data.scene.elements)]).size <= 4 ){
+          console.log("skipping")
           return
         }
 
@@ -471,7 +472,7 @@ wss.on('connection', async (ws) => {
   ws.on('close', async() => {
     console.log('Client disconnected');
 
-    logger.info("WebSocket client disconnected");
+  //  logger.info("WebSocket client disconnected");
 
     for (const [fileName, clients] of fileClients.entries()) {
 
@@ -504,7 +505,7 @@ wss.on('connection', async (ws) => {
     console.log("onclose",googleIdClientsDrawing.size)
   });
   ws.on('error', (error) => {
-    logger.error("WebSocket error", { error });
+  //  logger.error("WebSocket error", { error });
   });
 
 });
@@ -731,4 +732,3 @@ const PORT = process.env.PORT || 8080;
 server.listen(PORT, () => {
   console.log(`Server is running on port ${PORT}`);
 });
-

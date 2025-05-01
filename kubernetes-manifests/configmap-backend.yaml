@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: sheetwise-backend-config
+data:
+  NODE: "Excel_Backend"
+  DB_HOST: "https://postgres.default.svc.cluster.local"
+  redis_host: "https://redis.default.svc.cluster.local"
+  ELASTICSEARCH_URL: "44.223.91.24"
+  DB_PORT: "5432"
+  DB_NAME: "postgres"
+  DB_USER: "postgres"
+  NODE_ENV: "production"
+  PORT: "3000"
+  FRONTEND_URL: "https://sujalsharma.in"
+  region: "us-east-1"
+

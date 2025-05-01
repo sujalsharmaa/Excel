@@ -7,6 +7,11 @@ __pycache__/
 *.py[cod]
 *$py.class
 
+# kubernetes secrets 
+
+kubernetes-manifests/Secret.yaml
+terraform-configuration/Secret.yaml
+
 # C extensions
 *.so
 *.exe

@@ -26,7 +26,7 @@
 
 
   const SpreadsheetHeader = ({ hotInstance }) => {
-    const { fileUserName, setTheme, theme,fileUrl,isAuthenticated } = useAuthStore();
+    const { fileUserName, setTheme, theme,fileUrl,isAuthenticated,user,writePermission } = useAuthStore();
     const navigate = useNavigate();
     const fileInputRef = useRef(null);
     const [uploadProgress, setUploadProgress] = useState(0);
@@ -77,7 +77,7 @@
       startCol: currentColCount,
       amount: numCols,
       id: user?.google_id,
-      fileNameFromUser: fileURL,
+      fileNameFromUser: fileUrl,
       isWritePermitted: writePermission
     }));
   }
@@ -99,7 +99,7 @@ const addRows = (rowCount) => {
       startRow: currentRowCount,
       amount: numRows,
       id: user?.google_id,
-      fileNameFromUser: fileURL,
+      fileNameFromUser: fileUrl,
       isWritePermitted: writePermission
     }));
   }
@@ -441,7 +441,7 @@ const addRows = (rowCount) => {
   </div>
     {isAuthenticated && <ChatFeature hotInstance={hotInstance} />}
     {isAuthenticated && <SpreadsheetAssistant hotInstance={hotInstance}/>}
-   {isAuthenticated &&  <VideoCall fileNameFromUser={fileUrl} ws={useWebSocketStore.getState().socket} />}
+   {/* {isAuthenticated &&  <VideoCall fileNameFromUser={fileUrl} ws={useWebSocketStore.getState().socket} />} */}
 
 {isAuthenticated &&    <button 
       className="px-3 py-1 bg-indigo-700 rounded-lg hover:bg-pink-500 transition"
@@ -536,8 +536,9 @@ const addRows = (rowCount) => {
           
         </div>
 
-         <input 
-              className='border-2 border-blue-600 w-16 p-1 text-center' 
+<div>
+<input 
+              className='border-2 border-blue-600 w-16 p-1 text-center mx-2' 
               type="number" 
               defaultValue={10} 
               min="1"
@@ -563,6 +564,7 @@ const addRows = (rowCount) => {
             >
               Add {Cols} Columns
             </button>    
+</div>
 
         {/* Right Section */}
         <div className="flex items-center gap-4">

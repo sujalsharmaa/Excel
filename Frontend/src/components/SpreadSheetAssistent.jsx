@@ -56,7 +56,7 @@ const SpreadsheetAssistant = ({ hotInstance }) => {
     try {
       console.log("res=>",response)
   
-      if (response) {
+      if (response.actions) {
         //console.log("i picked up");
         for (const action of response.actions) {
           //console.log("action->", action);
@@ -113,8 +113,8 @@ const SpreadsheetAssistant = ({ hotInstance }) => {
             return data
         } catch (error) {
           console.log("i did it bro!!")
-          processResponse(JSON.parse(res.data.response).actions)
-            return;
+          processResponse(res.data.response)
+            return res.data.response;
         }
       }
 
