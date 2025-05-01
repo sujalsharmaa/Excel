@@ -32,17 +32,16 @@ spec:
               mountPath: /usr/local/etc/redis/redis.conf
               subPath: redis.conf
           args: ["redis-server", "/usr/local/etc/redis/redis.conf"]
+      volumes:
+        - name: redis-config
+          configMap:
+            name: redis-config
   volumeClaimTemplates:
     - metadata:
         name: redis-data
       spec:
-        storageClassName: ssd-rwo  # <- specify here
+        storageClassName: ssd-rwo
         accessModes: ["ReadWriteOnce"]
         resources:
           requests:
             storage: 2Gi
-
-  volumes:
-    - name: redis-config
-      configMap:
-        name: redis-config
