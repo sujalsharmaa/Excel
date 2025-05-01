@@ -5,5 +5,5 @@ metadata:
 provisioner: pd.csi.storage.gke.io
 volumeBindingMode: WaitForFirstConsumer
 parameters:
-  type: standard
+  type: balanced-rwo
   replication-type: none
