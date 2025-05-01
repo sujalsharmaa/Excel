@@ -36,12 +36,13 @@ spec:
     - metadata:
         name: redis-data
       spec:
+        storageClassName: ssd-rwo  # <- specify here
         accessModes: ["ReadWriteOnce"]
         resources:
           requests:
-            storage: 1Gi
+            storage: 2Gi
+
   volumes:
     - name: redis-config
       configMap:
         name: redis-config
-  
