@@ -5,5 +5,5 @@ metadata:
 provisioner: pd.csi.storage.gke.io
 volumeBindingMode: WaitForFirstConsumer
 parameters:
-  type: pd-ssd
+  type: standard
   replication-type: none
