@@ -22,3 +22,10 @@ spec:
                 name: sheetwise-backend-config
             - secretRef:
                 name: sheetwise-secrets
+          volumeMounts:
+            - name: sheetwise-nodejs-pv
+              mountPath: /data/db
+      volumes:
+        - name: sheetwise-ws-pv
+          persistentVolumeClaim:
+            claimName: sheetwise-nodejs-pvc                

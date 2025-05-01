@@ -26,22 +26,9 @@ spec:
               cpu: 500m
               memory: 512Mi
           volumeMounts:
-            - name: redis-data
-              mountPath: /data
-            - name: redis-config
-              mountPath: /usr/local/etc/redis/redis.conf
-              subPath: redis.conf
-          args: ["redis-server", "/usr/local/etc/redis/redis.conf"]
+            - name: redis-pv
+              mountPath: /data/db
       volumes:
-        - name: redis-config
-          configMap:
-            name: redis-config
-  volumeClaimTemplates:
-    - metadata:
-        name: redis-data
-      spec:
-        storageClassName: ssd-rwo
-        accessModes: ["ReadWriteOnce"]
-        resources:
-          requests:
-            storage: 2Gi
+        - name: redis-pv
+          persistentVolumeClaim:
+            claimName: redis-pvc
