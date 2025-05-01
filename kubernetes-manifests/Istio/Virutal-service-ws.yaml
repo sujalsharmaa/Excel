@@ -6,7 +6,7 @@ spec:
   hosts:
     - "*"
   gateways:
-    - sheetwise-gateway
+    - sheetwise-ws-gateway
   http:
     - match:
         - uri:
