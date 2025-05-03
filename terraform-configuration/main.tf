@@ -206,7 +206,7 @@ resource "aws_s3_bucket" "random_bucket" {
 
 
 resource "aws_s3_bucket" "env_bucket" {
-  bucket = "my-env-bucket-terraform2"
+  bucket = "my-env-bucket-terraform29"
   acl    = "private" # Keep it secure
   depends_on = [ aws_s3_bucket.random_bucket ]
 }
@@ -841,13 +841,12 @@ output "api_gateway_backend_url" {
 }
 
 resource "aws_s3_bucket" "sujal910992" {
-  bucket = "sujal9109"
+  bucket = "sujal7105"
   depends_on = [ aws_s3_bucket.random_bucket ]
 }
 
 resource "aws_s3_bucket_cors_configuration" "sujal910992_cors" {
   bucket = aws_s3_bucket.sujal910992.id
-
   cors_rule {
     allowed_headers = ["*"]
     allowed_methods = ["GET", "PUT", "POST"]
