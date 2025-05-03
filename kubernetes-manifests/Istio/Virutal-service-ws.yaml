@@ -6,11 +6,11 @@ spec:
   hosts:
     - "*"
   gateways:
-    - sheetwise-ws-gateway
+    - sheetwise-gateway
   http:
     - match:
         - uri:
-            prefix: /ws
+            prefix: /
       route:
         - destination:
             host: backend-ws.default.svc.cluster.local

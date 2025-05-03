@@ -38,7 +38,7 @@ const geminiModel = gemini.getGenerativeModel({ model: "gemini-2.0-flash" });
 
 export const router = Router();
 
-router.get("/admin", isAuthenticated, async (req, res) => {
+router.get("/api/admin", isAuthenticated, async (req, res) => {
   try {
     const googleId = req.user.id;
     console.log(req.user.id)
@@ -90,7 +90,7 @@ router.get("/admin", isAuthenticated, async (req, res) => {
 
 
 
-router.post("/newfile", isAuthenticated, async (req, res) => {
+router.post("/api/newfile", isAuthenticated, async (req, res) => {
   try {
     const { fileNamebyUser, UserPermissions } = req.body;
     const googleId = req.user.id;
@@ -193,7 +193,7 @@ router.post("/newfile", isAuthenticated, async (req, res) => {
 });
 
 
-  router.post("/file/rename", isAuthenticated, async (req, res) => {
+  router.post("/api/file/rename", isAuthenticated, async (req, res) => {
     try {
       const { file_Old_name, fileNewName } = req.body;
       const googleId = req.user.id;
@@ -233,7 +233,7 @@ router.post("/newfile", isAuthenticated, async (req, res) => {
   });
   
 
-  router.get("/file/:fileName/writeCheck", isAuthenticated, async (req, res) => {
+  router.get("/api/file/:fileName/writeCheck", isAuthenticated, async (req, res) => {
     try {
       console.log("Permission check route hit");
   
@@ -261,7 +261,7 @@ router.post("/newfile", isAuthenticated, async (req, res) => {
   
 
 
-  router.get("/file/:fileName", isAuthenticated, async (req, res) => {
+  router.get("/api/file/:fileName", isAuthenticated, async (req, res) => {
     const { fileName } = req.params;
     const googleId = req.user.id;
 
@@ -343,7 +343,7 @@ router.post("/newfile", isAuthenticated, async (req, res) => {
 
 
 
-router.post("/email", isAuthenticated, async (req, res) => {
+router.post("/api/email", isAuthenticated, async (req, res) => {
   try {
     const { email, file_id,fileName } = req.body;
     const name = req.user.display_name;
@@ -373,7 +373,7 @@ router.post("/email", isAuthenticated, async (req, res) => {
 });
 
 
-  router.post('/admin/files/:fileName/users', isAuthenticated, async (req, res) => {
+  router.post('/api/admin/files/:fileName/users', isAuthenticated, async (req, res) => {
   try {
     const { fileName } = req.params;
     const { email, read_permission, write_permission } = req.body;
@@ -434,7 +434,7 @@ DO UPDATE SET
 })
 
 // Update user permissions
-router.put('/admin/files/:fileName/users/:email', isAuthenticated, async (req, res) => {
+router.put('/api/admin/files/:fileName/users/:email', isAuthenticated, async (req, res) => {
   try {
     const { fileName, email } = req.params;
     const { read_permission, write_permission } = req.body;
@@ -483,7 +483,7 @@ router.put('/admin/files/:fileName/users/:email', isAuthenticated, async (req, r
 });
 
 
-router.post("/admin/generateToken", isAuthenticated, async (req, res) => {
+router.post("/api/admin/generateToken", isAuthenticated, async (req, res) => {
   try {
     console.log("i got hit from token req")
     const google_id = req.user.id;
@@ -555,7 +555,7 @@ function convertToSeconds(timeStr) {
 }
 
 
-router.get("/token/file/:file_id/:token", async (req, res) => {
+router.get("/api/token/file/:file_id/:token", async (req, res) => {
   try {
     const { file_id, token } = req.params;
     console.log("Received token file request:", file_id, token);
@@ -606,7 +606,7 @@ router.get("/token/file/:file_id/:token", async (req, res) => {
 
 
 // Delete file route
-router.delete('/admin/files/:fileName', isAuthenticated, async (req, res) => {
+router.delete('/api/admin/files/:fileName', isAuthenticated, async (req, res) => {
   try {
     const { fileName } = req.params;
     const googleId = req.user.id;
@@ -665,7 +665,7 @@ router.delete('/admin/files/:fileName', isAuthenticated, async (req, res) => {
 });
 
 // Delete user from file route
-router.delete('/admin/files/:fileName/users/:email', isAuthenticated, async (req, res) => {
+router.delete('/api/admin/files/:fileName/users/:email', isAuthenticated, async (req, res) => {
   try {
     const { fileName, email } = req.params;
     const googleId = req.user.id;
@@ -705,7 +705,7 @@ router.delete('/admin/files/:fileName/users/:email', isAuthenticated, async (req
 
 
 // Get S3 Folder Size
-router.get("/storageSize", isAuthenticated, async (req, res) => {
+router.get("/api/storageSize", isAuthenticated, async (req, res) => {
   const googleId = req.user.id;
   const folderPrefix = `${googleId}/`; // Ensure it ends with "/"
   console.log("googleid",googleId)
@@ -752,7 +752,7 @@ const razorpay = new Razorpay({
   key_secret: process.env.RAZORPAY_KEY_SECRET
 });
 
-router.post('/create-storage-order',isAuthenticated, async (req, res) => {
+router.post('/api/create-storage-order',isAuthenticated, async (req, res) => {
   console.log("payment got hit", process.env.RAZORPAY_KEY_ID,process.env.RAZORPAY_KEY_SECRET)
   try {
     const options = {
@@ -768,7 +768,7 @@ router.post('/create-storage-order',isAuthenticated, async (req, res) => {
   }
 });
 
-router.post('/verify-payment',isAuthenticated, async (req, res) => {
+router.post('/api/verify-payment',isAuthenticated, async (req, res) => {
   const {
     razorpay_payment_id,
     razorpay_order_id,
@@ -814,7 +814,7 @@ async function updateUserStorage(google_id,size){
 
 
 router.post(
-  "/uploadToS3AndLoadFile",
+  "/api/uploadToS3AndLoadFile",
   isAuthenticated,
   upload.single("file"), // Multer middleware to handle file upload
   async (req, res) => {
@@ -880,7 +880,7 @@ router.post(
 
 
 
-router.post("/chat", isAuthenticated, async (req, res) => {
+router.post("/api/chat", isAuthenticated, async (req, res) => {
   try {
     const { fileUrl } = req.body;
 
@@ -1024,7 +1024,7 @@ const verifyPaymentWithRazorpay = async (paymentId) => {
   }
 };
 
-router.post('/payment-success',isAuthenticated, async (req, res) => {
+router.post('/api/payment-success',isAuthenticated, async (req, res) => {
   const { pid } = req.body
     console.log(pid)
   if (!pid) {

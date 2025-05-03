@@ -135,15 +135,15 @@ passport.deserializeUser(async (googleId, done) => {
 // 5. Routes come after passport setup
 app.use(router);
 
-app.post("/auth/google/verify",verifyAuth)
+app.post("/api/auth/google/verify",verifyAuth)
 // Authentication routes
-app.get('/auth/google',
+app.get('/api/auth/google',
   passport.authenticate('google', { 
     scope: ['profile', 'email'] 
   })
 );
 
-app.get('/auth/google/callback', 
+app.get('/api/auth/google/callback', 
   passport.authenticate('google', { 
     failureRedirect: process.env.FRONTEND_URL,
     successRedirect: process.env.FRONTEND_URL,
@@ -151,7 +151,7 @@ app.get('/auth/google/callback',
   })
 );
 
-app.get('/auth/status', async (req, res) => {
+app.get('/api/auth/status', async (req, res) => {
 
   if (!req.isAuthenticated()) {
     return res.json({ 
@@ -213,11 +213,11 @@ app.post('/auth/refresh', async (req, res) => {
   return res.json({ token: newToken });
 });
 
-app.get("/",(req,res)=>{
+app.get("/api",(req,res)=>{
   res.send("hello sheetwise backend is working")
 })
 
-app.get("/health",(req,res)=>{
+app.get("/api/health",(req,res)=>{
   return res.status(200).send("health is working fine...")
 })
 
