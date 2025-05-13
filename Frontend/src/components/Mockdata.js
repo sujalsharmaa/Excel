@@ -1266,5 +1266,7 @@ export const MockDataHandsontable = [
     'Note:',
     'Currently unaffordable to keep EKS 24/7.',
     'Reach out if you’re a recruiter.',
-  ]
+  ],
+  // 100 empty rows
+  ...Array.from({ length: 100 }, () => Array(10).fill('')),
 ];
