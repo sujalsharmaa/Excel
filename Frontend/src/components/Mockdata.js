@@ -1264,7 +1264,7 @@ export const MockDataHandsontable = [
     '⌛ Terraform + EKS setup in under 30 minutes.',
     false,
     'Note:',
-    'Currently unaffordable to keep EKS 24/7.',
+    'Currently unaffordable to keep running EKS Cluster 24/7.',
     'Reach out if you’re a recruiter.',
   ],
   [
