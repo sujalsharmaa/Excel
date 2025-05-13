@@ -206,7 +206,7 @@ resource "aws_s3_bucket" "random_bucket" {
 
 
 resource "aws_s3_bucket" "env_bucket" {
-  bucket = "my-env-bucket-terraform29"
+  bucket = "my-env-bucket-terraform23"
   acl    = "private" # Keep it secure
   depends_on = [ aws_s3_bucket.random_bucket ]
 }
@@ -841,7 +841,7 @@ output "api_gateway_backend_url" {
 }
 
 resource "aws_s3_bucket" "sujal910992" {
-  bucket = "sujal7105"
+  bucket = "sujal7103"
   depends_on = [ aws_s3_bucket.random_bucket ]
 }
 
