@@ -330,12 +330,19 @@ const Documentation = () => {
 
   return (
     <div className="p-6 bg-gray-600 max-h-fit">
+
       <Card className="bg-gray-800 border-gray-700">
+        
         <CardHeader>
-          <CardTitle className="text-gray-100">Sheetwise Documentation</CardTitle>
+                
+         <div className='flex'> <CardTitle className="text-gray-100 text-2xl font-bold">Sheetwise Documentation</CardTitle>
+          <h1 className='ml-[230px] justify-center text-5xl font-bold text-white flex'>Made in Indore,India <img className='h-14 w-18 ml-3' src="../public/india-flag-icon-3047035.webp" alt="" /></h1>
+          
+         </div>
           <CardDescription className="text-gray-400">
             Complete guide to using the Sheetwise application
           </CardDescription>
+        
         </CardHeader>
         <CardContent>
           <div className="flex flex-col md:flex-row gap-6">
@@ -355,6 +362,7 @@ const Documentation = () => {
                 </button>
               ))}
             </div>
+            
             <div className="flex-1">
               <h2 className="text-2xl font-bold mb-2 text-gray-100">
                 {content[activeSection].title}
