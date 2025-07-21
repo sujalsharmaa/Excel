@@ -41,7 +41,8 @@ git clone https://github.com/sujalsharmaa/Excel.git
 
 cd Excel/Excel_Backend
 
-aws s3 cp s3://my-env-bucket-terraform2/auth/.env .env
+aws s3 cp s3://my-env-bucket-auezs1q5/auth/.env .env
+
 chmod 600 .env
 
 npm i pm2 -g
