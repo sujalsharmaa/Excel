@@ -38,7 +38,7 @@ const llm = new ChatGoogleGenerativeAI({
 });
 
 const embeddings = new GoogleGenerativeAIEmbeddings({
-  model: "text-embedding-004", 
+  model: "gemini-embedding-001", 
   apiKey: process.env.GEMINI_KEYS_2,
   safetySettings: [
     {
@@ -922,220 +922,133 @@ router.post("/api/chat", isAuthenticated, async (req, res) => {
       return res.status(400).json({ error: "File URL and fileNameFromUser are required" });
     }
  
-    // ------------------------------------------------------------------
-    // 1. LOAD SPREADSHEET DATA FROM REDIS
-    // ------------------------------------------------------------------
+    // 1. LOAD DATA FROM REDIS
     const file2DArrayStr = await redisCache.sendCommand(["JSON.GET", fileUrl]);
-    if (!file2DArrayStr) {
-      return res.status(404).json({ error: "File not found in cache" });
-    }
- 
+    if (!file2DArrayStr) return res.status(404).json({ error: "File not found" });
     const fileData = JSON.parse(file2DArrayStr).data;
  
-    // ------------------------------------------------------------------
-    // 2. BUILD DOCUMENTS — strict filtering so every doc has real content
-    // ------------------------------------------------------------------
-   
- 
-const docs = [];
-    fileData.forEach((row, index) => {
-      const hasContent = row.some(cell => 
-        cell !== null && 
-        cell !== undefined && 
-        cell.toString().trim() !== ""
-      );
-      
-      if (hasContent) {
-        docs.push(new Document({
-          pageContent: row.join(", "),
-          metadata: { rowIndex: index, fileUrl: fileUrl }
-        }));
+    // 2. PREPARE DOCUMENTS
+    const docs = fileData.map((row, index) => {
+      const hasContent = row.some(cell => cell?.toString().trim());
+      return hasContent ? new Document({
+        pageContent: row.join(", "),
+        metadata: { rowIndex: index, fileUrl }
+      }) : null;
+    }).filter(d => d !== null);
+
+    // 3. VECTOR STORE SETUP
+    let chromaUrl = process.env.CHROMA_URL || "http://localhost:8000";
+    if (!chromaUrl.startsWith("http")) chromaUrl = "http://" + chromaUrl;
+    const collectionName = fileUrl.replace(/[^a-zA-Z0-9_-]/g, "_").substring(0, 63);
+
+    let vectorStore = await Chroma.fromExistingCollection(embeddings, {
+      collectionName,
+      url: chromaUrl,
+    }).catch(() => null);
+
+    // 4. SMART EMBEDDING LOGIC (Batching + Progress)
+    let isPopulated = false;
+    if (vectorStore) {
+      const existingDocs = await vectorStore.similaritySearch("test", 1).catch(() => []);
+      if (existingDocs.length > 0) isPopulated = true;
+    } else {
+      vectorStore = new Chroma(embeddings, { collectionName, url: chromaUrl });
+    }
+
+    if (!isPopulated) {
+      const finalValidDocs = [];
+      const finalValidEmbeddings = [];
+      const BATCH_SIZE = 5; // Process 5 rows at a time for speed
+
+      for (let i = 0; i < docs.length; i += BATCH_SIZE) {
+        const batch = docs.slice(i, i + BATCH_SIZE);
+        try {
+          // Progress update to UI
+          await redisCache.publish(fileNameFromUser, JSON.stringify([{
+            type: "CHAT_PROGRESS",
+            message: `Analyzing data: ${Math.round((i / docs.length) * 100)}% complete...`,
+            fileNameFromUser
+          }]));
+
+          const batchEmbeds = await embeddings.embedDocuments(batch.map(d => d.pageContent));
+          finalValidEmbeddings.push(...batchEmbeds);
+          finalValidDocs.push(...batch);
+
+          // Rate limit protection for Gemini Free Tier
+          await new Promise(r => setTimeout(r, 2000)); 
+        } catch (err) {
+          console.error("Batch error:", err.message);
+          break; 
+        }
       }
-    });
-    // ------------------------------------------------------------------
-    // 3. VALIDATE EMBEDDINGS BEFORE SENDING TO CHROMA
-    //    The Google embedding API can silently return [] for edge-case
-    //    inputs; we detect and remove those docs to prevent the
-    //    ChromaValueError.
-    // ------------------------------------------------------------------
-    const rawEmbeddings = await embeddings.embedDocuments(
-      docs.map((d) => d.pageContent)
-    );
- 
-    const validDocs = [];
-    const validEmbeddings = [];
- 
-    rawEmbeddings.forEach((emb, i) => {
-      if (Array.isArray(emb) && emb.length > 0) {
-        validDocs.push(docs[i]);
-        validEmbeddings.push(emb);
-      } else {
-        console.warn(
-          `[chat] Skipping doc at index ${i} — embedding returned empty array. Content: "${docs[i].pageContent.substring(0, 60)}"`
-        );
+      if (finalValidDocs.length > 0) {
+        await vectorStore.addVectors(finalValidEmbeddings, finalValidDocs);
       }
-    });
- 
-    // Final guard — every embedding was invalid (extremely unlikely)
-    if (validDocs.length === 0) {
-      return res.status(500).json({
-        error: "Could not generate embeddings for any spreadsheet content. Try adding more data.",
-      });
     }
- 
-    // ------------------------------------------------------------------
-    // 4. UPSERT INTO CHROMA USING PRE-COMPUTED EMBEDDINGS
-    //    Passing embeddings directly avoids a second round-trip to the
-    //    embedding API and guarantees no empty arrays reach Chroma.
-    // ------------------------------------------------------------------
-// Ensure the URL has a protocol
-const finalValidDocs = [];
-const finalValidEmbeddings = [];
 
-for (let i = 0; i < docs.length; i++) {
-  try {
-    const vector = await embeddings.embedQuery(docs[i].pageContent);
-    if (vector && vector.length > 0) {
-      finalValidEmbeddings.push(vector);
-      finalValidDocs.push(docs[i]);
-    }
-  } catch (error) {
-    console.error(`Gemini API Error on row ${i}:`, error.message || error);
-    if (error.message && error.message.includes("429")) {
-      console.warn("Hit Gemini Rate Limit. Proceeding with rows embedded so far...");
-      break;
-    }
-  }
-}
-
-if (finalValidDocs.length === 0) {
-  return res.status(500).json({
-    error: "Could not generate embeddings for any spreadsheet content.",
-  });
-}
-
-let chromaUrl = process.env.CHROMA_URL || "http://localhost:8000";
-if (!chromaUrl.startsWith("http://") && !chromaUrl.startsWith("https://")) {
-  chromaUrl = "http://" + chromaUrl;
-}
-
-const collectionName = fileUrl
-  .replace(/[^a-zA-Z0-9_-]/g, "_")
-  .substring(0, 63);
-
-let finalVectorStore = await Chroma.fromExistingCollection(embeddings, {
-  collectionName,
-  url: chromaUrl,
-}).catch(() => null);
-
-if (!finalVectorStore) {
-  finalVectorStore = new Chroma(embeddings, { collectionName, url: chromaUrl });
-}
-
-await finalVectorStore.addVectors(finalValidEmbeddings, finalValidDocs);
- 
-    // ------------------------------------------------------------------
-    // 5. DEFINE TOOLS
-    // ------------------------------------------------------------------
+ // 5. DEFINE TOOLS
 const searchSheetTool = tool(
   async ({ query }) => {
-    // ✅ FIX: was `vectorStore` (undefined) — must be `finalVectorStore`
-    if (!finalVectorStore) {
-      return "The spreadsheet is completely empty. There is no data to search.";
-    }
-    const results = await finalVectorStore.similaritySearch(query, 5);
+    const results = await vectorStore.similaritySearch(query, 5);
     return JSON.stringify(results.map(r => ({ row: r.metadata.rowIndex, data: r.pageContent })));
   },
-      {
-        name: "search_spreadsheet",
-        description: "Search the spreadsheet to find relevant rows based on a semantic query. Returns the row index and the data.",
-        schema: z.object({
-          query: z.string().describe("The search query to find relevant information in the sheet"),
-        }),
-      }
-    );
- 
-    const readRangeTool = tool(
-      async ({ startRow, endRow }) => {
-        const subset = fileData.slice(startRow, endRow + 1);
-        return JSON.stringify(subset);
-      },
-      {
-        name: "read_cell_range",
-        description:
-          "Read a specific range of rows from the spreadsheet. Always read row 0 to get the headers.",
-        schema: z.object({
-          startRow: z.number(),
-          endRow: z.number(),
-        }),
-      }
-    );
- 
-    const updateCellTool = tool(
-      async ({ row, col, value }) => {
-        const path = `$.data[${row}][${col}]`;
-        await redisCache.sendCommand(["JSON.SET", fileUrl, path, JSON.stringify(value)]);
- 
-        const wsPayload = [
-          {
-            type: "UPDATE",
-            row,
-            col,
-            value,
-            fileNameFromUser,
-            isWritePermitted: true,
-            id: "AI_ASSISTANT",
-            senderId: "AI_ASSISTANT",
-          },
-        ];
-        await redisCache.publish(fileNameFromUser, JSON.stringify(wsPayload));
- 
-        return `Successfully updated cell at Row ${row}, Col ${col} to "${value}"`;
-      },
-      {
-        name: "update_cell",
-        description: "Update a specific cell with a new value or formula. Use 0-based indexing.",
-        schema: z.object({
-          row: z.number(),
-          col: z.number(),
-          value: z.string().describe("The new value or formula to set"),
-        }),
-      }
-    );
- 
-    const tools = [searchSheetTool, readRangeTool, updateCellTool];
- 
-    // ------------------------------------------------------------------
-    // 6. CREATE AND RUN THE AGENT
-    // ------------------------------------------------------------------
-    const systemPrompt = `You are "Sheetwise Assistant", a collaborative AI spreadsheet agent.
-You have tools to search the spreadsheet, read specific rows, and modify cells.
-- ALWAYS read row 0 first if you need to know the column headers.
-- If a user asks a question about the data, use 'search_spreadsheet' to find the answer.
-- If the user asks you to modify the sheet, use 'update_cell'.
-- Remember, rows and columns are 0-indexed.
-Explain your actions naturally to the user.`;
- 
-    const agent = createReactAgent({
-      llm,
-      tools,
-      messageModifier: systemPrompt,
-    });
- 
-    const result = await agent.invoke({
-      messages: [new HumanMessage(userMessageContent)],
-    });
- 
-    // The final assistant message is always the last entry in the messages array
-    const finalResponse = result.messages[result.messages.length - 1].content;
- 
-    // ✅ Single response — the earlier code called res.json() twice which
-    //    caused "Cannot set headers after they are sent to the client"
-    return res.status(200).json({ response: finalResponse });
+  { 
+    name: "search_spreadsheet", 
+    description: "Search the spreadsheet to find relevant rows or data.",
+    schema: z.object({ query: z.string() }) 
+  }
+);
+
+const updateCellTool = tool(
+  async ({ row, col, value }) => {
+    const path = `$.data[${row}][${col}]`;
+    await redisCache.sendCommand(["JSON.SET", fileUrl, path, JSON.stringify(value)]);
+
+    await redisCache.publish(fileNameFromUser, JSON.stringify([{
+      type: "UPDATE", 
+      row, 
+      col, 
+      value, 
+      fileNameFromUser, 
+      isWritePermitted: true, 
+      id: "AI_ASSISTANT"
+    }]));
+
+    return `Successfully updated cell at [${row}, ${col}] with: ${value}`;
+  },
+  { 
+    name: "update_cell", 
+    description: "REQUIRED: Use this tool to write data or create tables in the spreadsheet. Do not just show a table in chat.",
+    schema: z.object({ row: z.number(), col: z.number(), value: z.string() }) 
+  }
+);
+
+// 6. ENHANCED AGENT PROMPT
+const systemPrompt = `You are the "Sheetwise Assistant". Your primary goal is to manage the user's spreadsheet.
+
+CRITICAL RULES:
+1. If a user asks to "create", "insert", "add", or "update" data, you MUST use the 'update_cell' tool for EVERY cell.
+2. DO NOT just print a Markdown table in the chat. You must write it to the actual spreadsheet.
+3. Always read row 0 using 'search_spreadsheet' or 'read_cell_range' to identify column headers before writing.
+4. Rows and columns are 0-indexed.
+5. After updating the sheet, summarize what you did for the user.`;
+
+const agent = createReactAgent({
+  llm,
+  tools: [searchSheetTool, updateCellTool],
+  messageModifier: systemPrompt,
+});
+
+const result = await agent.invoke({ messages: [new HumanMessage(userMessageContent)] });
+
+// Log for debugging to see if the agent actually called the tools
+console.log("Agent Final Decision:", result.messages[result.messages.length - 1].content);
+
+return res.status(200).json({ response: result.messages[result.messages.length - 1].content });
  
   } catch (error) {
-    console.error("Error processing agent request:", error);
-    return res.status(500).json({ error: "Error processing request" });
+    console.error("Chat Error:", error);
+    return res.status(500).json({ error: "Internal server error" });
   }
 });
 
