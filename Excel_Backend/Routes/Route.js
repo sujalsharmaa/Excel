@@ -900,57 +900,141 @@ router.post("/api/chat", isAuthenticated, async (req, res) => {
   try {
     const { fileUrl, fileNameFromUser } = req.body;
     const userMessageContent = req.body.messages.find((msg) => msg.role === "user")?.content;
-
+ 
     if (!fileUrl || !fileNameFromUser) {
       return res.status(400).json({ error: "File URL and fileNameFromUser are required" });
     }
-
+ 
     // ------------------------------------------------------------------
-    // 1. RAG SETUP: Sync Spreadsheet to ChromaDB (Vector Store)
+    // 1. LOAD SPREADSHEET DATA FROM REDIS
     // ------------------------------------------------------------------
     const file2DArrayStr = await redisCache.sendCommand(["JSON.GET", fileUrl]);
     if (!file2DArrayStr) {
       return res.status(404).json({ error: "File not found in cache" });
     }
-    
+ 
     const fileData = JSON.parse(file2DArrayStr).data;
-    
-    // Create Documents for ChromaDB (combining row index with content)
-    const docs = fileData.map((row, index) => {
-      return new Document({
-        pageContent: row.join(", "),
-        metadata: { rowIndex: index, fileUrl: fileUrl }
+ 
+    // ------------------------------------------------------------------
+    // 2. BUILD DOCUMENTS — strict filtering so every doc has real content
+    // ------------------------------------------------------------------
+    const MIN_CONTENT_LENGTH = 3; // discard rows whose joined text is shorter than this
+ 
+    const docs = [];
+    fileData.forEach((row, index) => {
+      if (!Array.isArray(row)) return;
+ 
+      // Stringify every cell, trim, drop empties, then rejoin
+      const cleanCells = row
+        .map((cell) => (cell !== null && cell !== undefined ? cell.toString().trim() : ""))
+        .filter((cell) => cell.length > 0);
+ 
+      if (cleanCells.length === 0) return; // skip fully empty rows
+ 
+      const content = cleanCells.join(", ");
+      if (content.length < MIN_CONTENT_LENGTH) return; // skip near-empty rows
+ 
+      docs.push(
+        new Document({
+          pageContent: content,
+          metadata: { rowIndex: index, fileUrl },
+        })
+      );
+    });
+ 
+    // Safety fallback – Chroma crashes on an empty document array
+    if (docs.length === 0) {
+      docs.push(
+        new Document({
+          pageContent: "This spreadsheet is currently empty.",
+          metadata: { rowIndex: 0, fileUrl },
+        })
+      );
+    }
+ 
+    // ------------------------------------------------------------------
+    // 3. VALIDATE EMBEDDINGS BEFORE SENDING TO CHROMA
+    //    The Google embedding API can silently return [] for edge-case
+    //    inputs; we detect and remove those docs to prevent the
+    //    ChromaValueError.
+    // ------------------------------------------------------------------
+    const rawEmbeddings = await embeddings.embedDocuments(
+      docs.map((d) => d.pageContent)
+    );
+ 
+    const validDocs = [];
+    const validEmbeddings = [];
+ 
+    rawEmbeddings.forEach((emb, i) => {
+      if (Array.isArray(emb) && emb.length > 0) {
+        validDocs.push(docs[i]);
+        validEmbeddings.push(emb);
+      } else {
+        console.warn(
+          `[chat] Skipping doc at index ${i} — embedding returned empty array. Content: "${docs[i].pageContent.substring(0, 60)}"`
+        );
+      }
+    });
+ 
+    // Final guard — every embedding was invalid (extremely unlikely)
+    if (validDocs.length === 0) {
+      return res.status(500).json({
+        error: "Could not generate embeddings for any spreadsheet content. Try adding more data.",
       });
-    });
-
-    // Initialize ChromaDB collection for this specific file
-    // In production, you would only do this once when the file is uploaded/modified, 
-    // not on every chat request, to save latency.
-    const vectorStore = await Chroma.fromDocuments(docs, embeddings, {
-      collectionName: fileUrl.replace(/[^a-zA-Z0-9_-]/g, "_").substring(0, 63), // Sanitize for Chroma
+    }
+ 
+    // ------------------------------------------------------------------
+    // 4. UPSERT INTO CHROMA USING PRE-COMPUTED EMBEDDINGS
+    //    Passing embeddings directly avoids a second round-trip to the
+    //    embedding API and guarantees no empty arrays reach Chroma.
+    // ------------------------------------------------------------------
+    const collectionName = fileUrl
+      .replace(/[^a-zA-Z0-9_-]/g, "_")
+      .substring(0, 63);
+ 
+    const vectorStore = await Chroma.fromExistingCollection(embeddings, {
+      collectionName,
       url: process.env.CHROMA_URL || "http://localhost:8000",
-    });
-
+    }).catch(() => null); // collection may not exist yet — that's fine
+ 
+    let finalVectorStore;
+    if (vectorStore) {
+      // Collection exists — upsert the latest data
+      await vectorStore.addVectors(validEmbeddings, validDocs);
+      finalVectorStore = vectorStore;
+    } else {
+      // First time — create the collection with pre-validated embeddings
+      finalVectorStore = await Chroma.fromTexts(
+        validDocs.map((d) => d.pageContent),
+        validDocs.map((d) => d.metadata),
+        embeddings,
+        {
+          collectionName,
+          url: process.env.CHROMA_URL || "http://localhost:8000",
+        }
+      );
+    }
+ 
     // ------------------------------------------------------------------
-    // 2. DEFINE TOOLS (The "Actions" the AI can take)
+    // 5. DEFINE TOOLS
     // ------------------------------------------------------------------
-
-    // Tool A: Semantic Search via ChromaDB
     const searchSheetTool = tool(
       async ({ query }) => {
-        const results = await vectorStore.similaritySearch(query, 5); // Get top 5 relevant rows
-        return JSON.stringify(results.map(r => ({ row: r.metadata.rowIndex, data: r.pageContent })));
+        const results = await finalVectorStore.similaritySearch(query, 5);
+        return JSON.stringify(
+          results.map((r) => ({ row: r.metadata.rowIndex, data: r.pageContent }))
+        );
       },
       {
         name: "search_spreadsheet",
-        description: "Search the spreadsheet to find relevant rows based on a semantic query. Returns the row index and the data.",
+        description:
+          "Search the spreadsheet to find relevant rows based on a semantic query. Returns the row index and data.",
         schema: z.object({
           query: z.string().describe("The search query to find relevant information in the sheet"),
         }),
       }
     );
-
-    // Tool B: Read specific headers or row ranges
+ 
     const readRangeTool = tool(
       async ({ startRow, endRow }) => {
         const subset = fileData.slice(startRow, endRow + 1);
@@ -958,38 +1042,35 @@ router.post("/api/chat", isAuthenticated, async (req, res) => {
       },
       {
         name: "read_cell_range",
-        description: "Read a specific range of rows from the spreadsheet. Always read row 0 to get the headers.",
+        description:
+          "Read a specific range of rows from the spreadsheet. Always read row 0 to get the headers.",
         schema: z.object({
           startRow: z.number(),
           endRow: z.number(),
         }),
       }
     );
-
-    // Tool C: Write/Update Cell (Acts as a Virtual User)
+ 
     const updateCellTool = tool(
       async ({ row, col, value }) => {
-        // 1. Update the Redis JSON Cache directly
         const path = `$.data[${row}][${col}]`;
         await redisCache.sendCommand(["JSON.SET", fileUrl, path, JSON.stringify(value)]);
-
-        // 2. Broadcast the update to all connected WebSocket clients
-        const wsPayload = [{
-          type: "UPDATE",
-          row: row,
-          col: col,
-          value: value,
-          fileNameFromUser: fileNameFromUser,
-          isWritePermitted: true,
-          id: "AI_ASSISTANT", // Identify the sender as the AI
-          senderId: "AI_ASSISTANT"
-        }];
-        
-        // Import your redisPublisher if not already available in Route.js, 
-        // or ensure you have a publisher instance here.
+ 
+        const wsPayload = [
+          {
+            type: "UPDATE",
+            row,
+            col,
+            value,
+            fileNameFromUser,
+            isWritePermitted: true,
+            id: "AI_ASSISTANT",
+            senderId: "AI_ASSISTANT",
+          },
+        ];
         await redisCache.publish(fileNameFromUser, JSON.stringify(wsPayload));
-
-        return `Successfully updated cell at Row ${row}, Col ${col} to ${value}`;
+ 
+        return `Successfully updated cell at Row ${row}, Col ${col} to "${value}"`;
       },
       {
         name: "update_cell",
@@ -1001,46 +1082,40 @@ router.post("/api/chat", isAuthenticated, async (req, res) => {
         }),
       }
     );
-
+ 
     const tools = [searchSheetTool, readRangeTool, updateCellTool];
-
-// ------------------------------------------------------------------
-    // 3. DEFINE THE AGENT WITH LANGGRAPH
+ 
+    // ------------------------------------------------------------------
+    // 6. CREATE AND RUN THE AGENT
     // ------------------------------------------------------------------
     const systemPrompt = `You are "Sheetwise Assistant", a collaborative AI spreadsheet agent.
-      You have tools to search the spreadsheet, read specific rows, and modify cells.
-      - ALWAYS read row 0 first if you need to know the column headers.
-      - If a user asks a question about the data, use 'search_spreadsheet' to find the answer.
-      - If the user asks you to modify the sheet, use 'update_cell'.
-      - Remember, rows and columns are 0-indexed.
-      Explain your actions naturally to the user.`;
-
+You have tools to search the spreadsheet, read specific rows, and modify cells.
+- ALWAYS read row 0 first if you need to know the column headers.
+- If a user asks a question about the data, use 'search_spreadsheet' to find the answer.
+- If the user asks you to modify the sheet, use 'update_cell'.
+- Remember, rows and columns are 0-indexed.
+Explain your actions naturally to the user.`;
+ 
     const agent = createReactAgent({
-      llm: llm,
-      tools: tools,
-      messageModifier: systemPrompt, // Injects the system prompt
+      llm,
+      tools,
+      messageModifier: systemPrompt,
     });
-
-    // ------------------------------------------------------------------
-    // 4. EXECUTE AGENT
-    // ------------------------------------------------------------------
+ 
     const result = await agent.invoke({
       messages: [new HumanMessage(userMessageContent)],
     });
-
-    // LangGraph returns an array of all messages (including tool calls).
-    // The final answer is the content of the very last message.
+ 
+    // The final assistant message is always the last entry in the messages array
     const finalResponse = result.messages[result.messages.length - 1].content;
-
-    res.status(200).json({ response: finalResponse });
-
-    // Send the final conversational text back to the frontend
-    // The actual cell updates happened asynchronously via the tools broadcasting over Redis!
-    res.status(200).json({ response: result.output });
-
+ 
+    // ✅ Single response — the earlier code called res.json() twice which
+    //    caused "Cannot set headers after they are sent to the client"
+    return res.status(200).json({ response: finalResponse });
+ 
   } catch (error) {
     console.error("Error processing agent request:", error);
-    res.status(500).json({ error: "Error processing request" });
+    return res.status(500).json({ error: "Error processing request" });
   }
 });
 

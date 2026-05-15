@@ -13,7 +13,7 @@ const SpreadsheetAssistant = ({ hotInstance }) => {
   const [messages, setMessages] = useState([]);
   const [isCollapsed, setIsCollapsed] = useState(true);
   const messagesEndRef = useRef(null);
-  const {fileUrl} = useAuthStore()
+  const {fileUrl,fileUserName} = useAuthStore()
 
   useEffect(() => {
     scrollToBottom();
@@ -84,14 +84,13 @@ const SpreadsheetAssistant = ({ hotInstance }) => {
     const newMessage = { type: "user", content: userInput };
     setMessages(prev => [...prev, newMessage]);
 
-    try {
+try {
       const response = await axios.post(
         `${import.meta.env.VITE_PUBLIC_API_URL}/chat`,
-       
         {
-            fileUrl,
+          fileUrl: fileUrl,
+          fileNameFromUser: fileUserName,
           messages: [
-
             {
               role: "user",
               content: userInput
