@@ -35,7 +35,7 @@ git clone https://github.com/sujalsharmaa/Excel.git
 
 cd Excel/Excel_Backend_Nodejs_WS
 
-aws s3 cp s3://my-env-bucket-auezs1q5/ws/.env .env
+aws s3 cp s3://my-env-bucket-f9ax628s/ws/.env .env
 
 chmod 600 .env
 npm i

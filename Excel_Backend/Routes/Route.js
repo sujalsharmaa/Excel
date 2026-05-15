@@ -18,13 +18,29 @@ import { parse } from "fast-csv";
 import xlsx from "xlsx";
 import path from "path";
 import multer from "multer";
-const upload = multer({ dest: "uploads/" }); // Temp storage for file processing
-import { parseCSV } from '../utils/dbUtils.js';
 
+import { parseCSV } from '../utils/dbUtils.js';
+import { ChatGoogleGenerativeAI, GoogleGenerativeAIEmbeddings } from "@langchain/google-genai";
+import { tool } from "@langchain/core/tools";
+import { z } from "zod";
+import { createReactAgent } from "@langchain/langgraph/prebuilt";
+import { HumanMessage } from "@langchain/core/messages";
+import { Chroma } from "@langchain/community/vectorstores/chroma";
+import { Document } from "@langchain/core/documents";
+const upload = multer({ dest: "uploads/" }); // Temp storage for file processing
 const gemini = new GoogleGenerativeAI(process.env.GEMINI_KEYS_2);
 
-// Load the generative model
-const geminiModel = gemini.getGenerativeModel({ model: "gemini-2.0-flash" });
+// Initialize LangChain Models
+const llm = new ChatGoogleGenerativeAI({
+  model: "gemini-2.5-flash", // Changed from modelName to model
+  apiKey: process.env.GEMINI_KEYS_2,
+  temperature: 0,
+});
+
+const embeddings = new GoogleGenerativeAIEmbeddings({
+  model: "text-embedding-004", // Changed from modelName to model
+  apiKey: process.env.GEMINI_KEYS_2,
+});
 
 
 
@@ -41,7 +57,7 @@ export const router = Router();
 router.get("/api/admin", isAuthenticated, async (req, res) => {
   try {
     const googleId = req.user.id;
-    console.log(req.user.id)
+    //console.log(req.user.id)
 
     // Fetch all project files for the user
     const query1 = `
@@ -72,7 +88,7 @@ router.get("/api/admin", isAuthenticated, async (req, res) => {
         };
       })
     );
-    console.log(fileData)
+   // console.log(fileData)
 
     return res.json({
       success: true,
@@ -198,7 +214,7 @@ router.post("/api/newfile", isAuthenticated, async (req, res) => {
       const { file_Old_name, fileNewName } = req.body;
       const googleId = req.user.id;
       
-      console.log("i got hit ", fileNewName,file_Old_name,googleId);
+     // console.log("i got hit ", fileNewName,file_Old_name,googleId);
   
       // Get all file names for the user
       const result1 = await User.query(
@@ -221,7 +237,7 @@ router.post("/api/newfile", isAuthenticated, async (req, res) => {
       );
   
       if (result.rowCount > 0) {
-        console.log("Updated file:", result.rows[0]);
+      //  console.log("Updated file:", result.rows[0]);
         return res.json({ file_name_user: result.rows[0].file_name_user });
       } else {
         return res.status(404).json({ error: "File not found" });
@@ -295,7 +311,7 @@ router.post("/api/newfile", isAuthenticated, async (req, res) => {
         const cachedData = await redisCache.sendCommand(["JSON.GET", fileName]);
 
         if (cachedData) {
-            console.log("✅ Redis Cache Hit:");
+          //  console.log("✅ Redis Cache Hit:");
 
             try {
                 // **Fix:** Parse JSON properly before conversion
@@ -416,7 +432,7 @@ DO UPDATE SET
         [file_name,googleId,read_permission || false, write_permission || false,email,false ]
         
       );
-      console.log(updateFilePermissions.rows[0])
+    //  console.log(updateFilePermissions.rows[0])
     } catch (error) {
       console.log(error)
     }
@@ -469,7 +485,7 @@ router.put('/api/admin/files/:fileName/users/:email', isAuthenticated, async (re
        RETURNING *`,
       [read_permission, write_permission, file_id, email]
     );
-    console.log(updateResult.rows[0])
+   // console.log(updateResult.rows[0])
 
     if (updateResult.rows.length === 0) {
       return res.status(404).json({ error: 'User is not authorized for the file' });
@@ -882,116 +898,148 @@ router.post(
 
 router.post("/api/chat", isAuthenticated, async (req, res) => {
   try {
-    const { fileUrl } = req.body;
+    const { fileUrl, fileNameFromUser } = req.body;
+    const userMessageContent = req.body.messages.find((msg) => msg.role === "user")?.content;
 
-    // Ensure the fileUrl is provided
-    if (!fileUrl) {
-      return res.status(400).json({ error: "File URL is required" });
+    if (!fileUrl || !fileNameFromUser) {
+      return res.status(400).json({ error: "File URL and fileNameFromUser are required" });
     }
 
-    // Get the 2D array from Redis
-    const file2DArray = await redisCache.sendCommand(["JSON.GET",fileUrl])
-    if (!file2DArray) {
+    // ------------------------------------------------------------------
+    // 1. RAG SETUP: Sync Spreadsheet to ChromaDB (Vector Store)
+    // ------------------------------------------------------------------
+    const file2DArrayStr = await redisCache.sendCommand(["JSON.GET", fileUrl]);
+    if (!file2DArrayStr) {
       return res.status(404).json({ error: "File not found in cache" });
     }
-    console.log("CSV File:", file2DArray);
-
-    // Convert 2D array to CSV string
-    const fileCSV = await new Promise((resolve, reject) => {
-      let csvString = "";
-      fastcsv
-        .writeToString(JSON.parse(file2DArray).data, { headers: false })
-        .then(resolve)
-        .catch(reject);
+    
+    const fileData = JSON.parse(file2DArrayStr).data;
+    
+    // Create Documents for ChromaDB (combining row index with content)
+    const docs = fileData.map((row, index) => {
+      return new Document({
+        pageContent: row.join(", "),
+        metadata: { rowIndex: index, fileUrl: fileUrl }
+      });
     });
 
-    
-
-    // Validate request messages
-    if (!req.body.messages || !Array.isArray(req.body.messages)) {
-      return res.status(400).json({ error: "Invalid request format" });
-    }
-
-    const model = "gemini";
-
-    // Extract system and user messages
-
-    //const systemMessage = req.body.messages.find((msg) => msg.role === "system");
-    const userMessage = req.body.messages.find((msg) => msg.role === "user");
-
-    // Create a prompt including the CSV data
-    const prompt = `
-You are an AI assistant helping users interact with a spreadsheet. 
-Never use regex always use your intelligence.
-Remember my spreadsheet rows and columns starts from index 0.
-But my vertical row header starts from 1 so A1 = row: 0, col: 0
-B1 = row: 0, col: 1, A2 = row: 1,col: 0, B2 = row: 1, col: 1. 
-              For spreadsheet actions, respond with JSON. For normal chat, respond with plain text.
-              
-              Spreadsheet action format:
-              {
-                "actions": [
-                  {
-                    "type": "SET_CELL_VALUE",
-                    "row": 0,
-                    "col": 0,
-                    "value": "123"
-                  }
-                ],
-                "response": "I've set cell A1 to 123."
-              }
-              Remember my spreadsheet rows and columns starts from index 0.
-But my vertical row header starts from 1 so A1 = row: 0, col: 0
-B1 = row: 0, col: 1, A2 = row: 1,col: 0, B2 = row: 1, col: 1. 
-always check there is existing header in the sheet, if it exists then set formulas below headers.
-donot use formula for translation. use your own intelligence.
-              if the user want you to use formula then your respond should be in json like this:
-
-              {
-               "actions":[
-               {
-                    "type": "SET_FORMULA",
-                    "row": target row where result should appear,
-                    "col": target column where result should appear (if there is header make sure you donot delete it, always set correspondingly values),
-                    "formula": "=formula_name(A1:B1)" (Formula range remains correct)
-
-               }
-               ],
-               "response": "I' ve apply formula_name on A1,B1...cells"
-              }
-              
-              
-
-      User request: ${userMessage?.content}
-      Here is the current file for context:
-      type can only be SET_FORMULA or SET_CELL_VALUE even when you need to add or delete column you just use SET_CELL_VALUE 
-      also NEVER include JSON in "response" put it in action.
-      ${fileCSV}
-    `;
-
-    
-
-    // Send prompt to Gemini
-    const geminiResponse = await geminiModel.generateContent({
-      contents: [{ role: "user", parts: [{ text: prompt }] }],
+    // Initialize ChromaDB collection for this specific file
+    // In production, you would only do this once when the file is uploaded/modified, 
+    // not on every chat request, to save latency.
+    const vectorStore = await Chroma.fromDocuments(docs, embeddings, {
+      collectionName: fileUrl.replace(/[^a-zA-Z0-9_-]/g, "_").substring(0, 63), // Sanitize for Chroma
+      url: process.env.CHROMA_URL || "http://localhost:8000",
     });
 
-    let assistantMessage = geminiResponse.response.text();
+    // ------------------------------------------------------------------
+    // 2. DEFINE TOOLS (The "Actions" the AI can take)
+    // ------------------------------------------------------------------
 
-    // Try to parse JSON response
-    if (assistantMessage) {
-      try {
-        const parsedResponse = assistantMessage.trim().replace(/^```json\s*/, '').replace(/```$/, '');
-        assistantMessage = parsedResponse;
-      } catch (e) {
-        console.warn("Response looked like JSON but couldn't be parsed:", e);
+    // Tool A: Semantic Search via ChromaDB
+    const searchSheetTool = tool(
+      async ({ query }) => {
+        const results = await vectorStore.similaritySearch(query, 5); // Get top 5 relevant rows
+        return JSON.stringify(results.map(r => ({ row: r.metadata.rowIndex, data: r.pageContent })));
+      },
+      {
+        name: "search_spreadsheet",
+        description: "Search the spreadsheet to find relevant rows based on a semantic query. Returns the row index and the data.",
+        schema: z.object({
+          query: z.string().describe("The search query to find relevant information in the sheet"),
+        }),
       }
-    }
-    console.log(assistantMessage)
+    );
 
-    res.status(200).json({ response: assistantMessage });
+    // Tool B: Read specific headers or row ranges
+    const readRangeTool = tool(
+      async ({ startRow, endRow }) => {
+        const subset = fileData.slice(startRow, endRow + 1);
+        return JSON.stringify(subset);
+      },
+      {
+        name: "read_cell_range",
+        description: "Read a specific range of rows from the spreadsheet. Always read row 0 to get the headers.",
+        schema: z.object({
+          startRow: z.number(),
+          endRow: z.number(),
+        }),
+      }
+    );
+
+    // Tool C: Write/Update Cell (Acts as a Virtual User)
+    const updateCellTool = tool(
+      async ({ row, col, value }) => {
+        // 1. Update the Redis JSON Cache directly
+        const path = `$.data[${row}][${col}]`;
+        await redisCache.sendCommand(["JSON.SET", fileUrl, path, JSON.stringify(value)]);
+
+        // 2. Broadcast the update to all connected WebSocket clients
+        const wsPayload = [{
+          type: "UPDATE",
+          row: row,
+          col: col,
+          value: value,
+          fileNameFromUser: fileNameFromUser,
+          isWritePermitted: true,
+          id: "AI_ASSISTANT", // Identify the sender as the AI
+          senderId: "AI_ASSISTANT"
+        }];
+        
+        // Import your redisPublisher if not already available in Route.js, 
+        // or ensure you have a publisher instance here.
+        await redisCache.publish(fileNameFromUser, JSON.stringify(wsPayload));
+
+        return `Successfully updated cell at Row ${row}, Col ${col} to ${value}`;
+      },
+      {
+        name: "update_cell",
+        description: "Update a specific cell with a new value or formula. Use 0-based indexing.",
+        schema: z.object({
+          row: z.number(),
+          col: z.number(),
+          value: z.string().describe("The new value or formula to set"),
+        }),
+      }
+    );
+
+    const tools = [searchSheetTool, readRangeTool, updateCellTool];
+
+// ------------------------------------------------------------------
+    // 3. DEFINE THE AGENT WITH LANGGRAPH
+    // ------------------------------------------------------------------
+    const systemPrompt = `You are "Sheetwise Assistant", a collaborative AI spreadsheet agent.
+      You have tools to search the spreadsheet, read specific rows, and modify cells.
+      - ALWAYS read row 0 first if you need to know the column headers.
+      - If a user asks a question about the data, use 'search_spreadsheet' to find the answer.
+      - If the user asks you to modify the sheet, use 'update_cell'.
+      - Remember, rows and columns are 0-indexed.
+      Explain your actions naturally to the user.`;
+
+    const agent = createReactAgent({
+      llm: llm,
+      tools: tools,
+      messageModifier: systemPrompt, // Injects the system prompt
+    });
+
+    // ------------------------------------------------------------------
+    // 4. EXECUTE AGENT
+    // ------------------------------------------------------------------
+    const result = await agent.invoke({
+      messages: [new HumanMessage(userMessageContent)],
+    });
+
+    // LangGraph returns an array of all messages (including tool calls).
+    // The final answer is the content of the very last message.
+    const finalResponse = result.messages[result.messages.length - 1].content;
+
+    res.status(200).json({ response: finalResponse });
+
+    // Send the final conversational text back to the frontend
+    // The actual cell updates happened asynchronously via the tools broadcasting over Redis!
+    res.status(200).json({ response: result.output });
+
   } catch (error) {
-    console.error("Error processing request:", error);
+    console.error("Error processing agent request:", error);
     res.status(500).json({ error: "Error processing request" });
   }
 });

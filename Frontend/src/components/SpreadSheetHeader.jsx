@@ -1,4 +1,4 @@
-  import React, { useRef, useState, useEffect } from 'react';
+import React, { useRef, useState, useEffect } from 'react';
   import { Search, Download, Upload, Menu, ChevronDown,Navigation,Plus, Minus, Type  } from 'lucide-react';
   import { Button } from "@/components/ui/button";
   import { Input } from "@/components/ui/input";
@@ -381,58 +381,70 @@ const addRows = (rowCount) => {
   <div className="flex flex-wrap items-center gap-3">
   <div className="flex flex-wrap items-center gap-3">
 
-    
-    
-    {/* Background Color Selection */}
+    {/* Font Size + Color Controls — consistent with header button style */}
     <div className="flex items-center gap-2">
 
-    <button 
-    onClick={handleDecreaseFontSize}
-    className="bg-blue-600 hover:bg-blue-700 px-2 py-1 text-white flex items-center rounded-l-md"
-    title="Decrease font size"
-    disabled={!selectedCells}
-  >
-    <Minus className="w-4 h-4" />
-  </button>
-  
-  <div className="px-2 text-white flex items-center bg-gray-700">
-    <Type className="w-4 h-4 mr-1" />
-    <span className="text-xs whitespace-nowrap">{fontSize}px</span>
-  </div>
-  
-  <button 
-    onClick={handleIncreaseFontSize}
-    className="bg-blue-600 hover:bg-blue-700 px-2 py-1 text-white flex items-center rounded-r-md"
-    title="Increase font size"
-    disabled={!selectedCells}
-  >
-    <Plus className="w-4 h-4" />
-  </button>
+      {/* Font Size Controls */}
+      <div className="flex items-center rounded-md overflow-hidden border border-gray-600">
+        <button
+          onClick={handleDecreaseFontSize}
+          className="bg-gray-700 hover:bg-gray-600 px-2 py-1 text-white flex items-center transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+          title="Decrease font size"
+          disabled={!selectedCells}
+        >
+          <Minus className="w-3 h-3" />
+        </button>
+        <div className="px-2 py-1 text-white flex items-center gap-1 bg-gray-800 select-none">
+          <Type className="w-3 h-3 text-gray-400" />
+          <span className="text-xs font-medium tabular-nums w-7 text-center">{fontSize}px</span>
+        </div>
+        <button
+          onClick={handleIncreaseFontSize}
+          className="bg-gray-700 hover:bg-gray-600 px-2 py-1 text-white flex items-center transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+          title="Increase font size"
+          disabled={!selectedCells}
+        >
+          <Plus className="w-3 h-3" />
+        </button>
+      </div>
 
-  <div className="flex items-center gap-2">
-  <input 
-    type="color" 
-    value={bgColor} 
-    onChange={(e) => handleBgColorChange(e.target.value)}
-    className="w-8 h-8 rounded cursor-pointer"
-    title="Select background color"
-    disabled={!selectedCells}
-  />
-  <span className="text-xs text-white">Bg Color</span>
-</div>
+      {/* Background Color */}
+      <label
+        className={`flex items-center gap-1.5 bg-gray-700 hover:bg-gray-600 transition-colors px-2 py-1 rounded-md cursor-pointer border border-gray-600 ${!selectedCells ? 'opacity-40 cursor-not-allowed pointer-events-none' : ''}`}
+        title="Select background color"
+      >
+        <span
+          className="w-4 h-4 rounded-sm border border-gray-500 flex-shrink-0"
+          style={{ backgroundColor: bgColor }}
+        />
+        <input
+          type="color"
+          value={bgColor}
+          onChange={(e) => handleBgColorChange(e.target.value)}
+          className="sr-only"
+          disabled={!selectedCells}
+        />
+        <span className="text-xs text-gray-200 whitespace-nowrap">Bg</span>
+      </label>
 
-{/* Text Color Selection */}
-<div className="flex items-center gap-2">
-  <input 
-    type="color" 
-    value={textColor} 
-    onChange={(e) => handleTextColorChange(e.target.value)}
-    className="w-8 h-8 rounded cursor-pointer"
-    title="Select text color"
-    disabled={!selectedCells}
-  />
-  <span className="text-xs text-white">Text Color</span>
-</div>
+      {/* Text Color */}
+      <label
+        className={`flex items-center gap-1.5 bg-gray-700 hover:bg-gray-600 transition-colors px-2 py-1 rounded-md cursor-pointer border border-gray-600 ${!selectedCells ? 'opacity-40 cursor-not-allowed pointer-events-none' : ''}`}
+        title="Select text color"
+      >
+        <span
+          className="w-4 h-4 rounded-sm border border-gray-500 flex-shrink-0"
+          style={{ backgroundColor: textColor }}
+        />
+        <input
+          type="color"
+          value={textColor}
+          onChange={(e) => handleTextColorChange(e.target.value)}
+          className="sr-only"
+          disabled={!selectedCells}
+        />
+        <span className="text-xs text-gray-200 whitespace-nowrap">Text</span>
+      </label>
 
     </div>
 

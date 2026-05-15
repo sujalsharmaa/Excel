@@ -206,13 +206,13 @@ resource "aws_s3_bucket" "random_bucket" {
 
 
 resource "aws_s3_bucket" "env_bucket" {
-  bucket = "my-env-bucket-auezs1q5"
+  bucket = "my-env-bucket-f9ax628s"
   acl    = "private" # Keep it secure
   depends_on = [ aws_s3_bucket.random_bucket ]
 }
 
 resource "aws_s3_bucket" "sujal910992" {
-  bucket = "sujal-f5a7jvzw"
+  bucket = "sujal-e3jh1f3e"
   depends_on = [ aws_s3_bucket.random_bucket ]
 }
 
