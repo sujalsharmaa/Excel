@@ -12,7 +12,7 @@ import { sendEmailFileLink } from '../Mailtrap/EmailControllers.js';
 import Razorpay from "razorpay";
 import dotenv from "dotenv"
 dotenv.config()
-import { GoogleGenerativeAI } from '@google/generative-ai';
+import { GoogleGenerativeAI, HarmCategory, HarmBlockThreshold } from '@google/generative-ai';
 import { parse } from "fast-csv";
 
 import xlsx from "xlsx";
@@ -38,10 +38,27 @@ const llm = new ChatGoogleGenerativeAI({
 });
 
 const embeddings = new GoogleGenerativeAIEmbeddings({
-  model: "text-embedding-004", // Changed from modelName to model
+  model: "text-embedding-004", 
   apiKey: process.env.GEMINI_KEYS_2,
+  safetySettings: [
+    {
+      category: HarmCategory.HARM_CATEGORY_HARASSMENT,
+      threshold: HarmBlockThreshold.BLOCK_NONE,
+    },
+    {
+      category: HarmCategory.HARM_CATEGORY_HATE_SPEECH,
+      threshold: HarmBlockThreshold.BLOCK_NONE,
+    },
+    {
+      category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT,
+      threshold: HarmBlockThreshold.BLOCK_NONE,
+    },
+    {
+      category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT,
+      threshold: HarmBlockThreshold.BLOCK_NONE,
+    },
+  ],
 });
-
 
 
 
@@ -918,40 +935,23 @@ router.post("/api/chat", isAuthenticated, async (req, res) => {
     // ------------------------------------------------------------------
     // 2. BUILD DOCUMENTS — strict filtering so every doc has real content
     // ------------------------------------------------------------------
-    const MIN_CONTENT_LENGTH = 3; // discard rows whose joined text is shorter than this
+   
  
-    const docs = [];
+const docs = [];
     fileData.forEach((row, index) => {
-      if (!Array.isArray(row)) return;
- 
-      // Stringify every cell, trim, drop empties, then rejoin
-      const cleanCells = row
-        .map((cell) => (cell !== null && cell !== undefined ? cell.toString().trim() : ""))
-        .filter((cell) => cell.length > 0);
- 
-      if (cleanCells.length === 0) return; // skip fully empty rows
- 
-      const content = cleanCells.join(", ");
-      if (content.length < MIN_CONTENT_LENGTH) return; // skip near-empty rows
- 
-      docs.push(
-        new Document({
-          pageContent: content,
-          metadata: { rowIndex: index, fileUrl },
-        })
+      const hasContent = row.some(cell => 
+        cell !== null && 
+        cell !== undefined && 
+        cell.toString().trim() !== ""
       );
+      
+      if (hasContent) {
+        docs.push(new Document({
+          pageContent: row.join(", "),
+          metadata: { rowIndex: index, fileUrl: fileUrl }
+        }));
+      }
     });
- 
-    // Safety fallback – Chroma crashes on an empty document array
-    if (docs.length === 0) {
-      docs.push(
-        new Document({
-          pageContent: "This spreadsheet is currently empty.",
-          metadata: { rowIndex: 0, fileUrl },
-        })
-      );
-    }
- 
     // ------------------------------------------------------------------
     // 3. VALIDATE EMBEDDINGS BEFORE SENDING TO CHROMA
     //    The Google embedding API can silently return [] for edge-case
@@ -988,47 +988,67 @@ router.post("/api/chat", isAuthenticated, async (req, res) => {
     //    Passing embeddings directly avoids a second round-trip to the
     //    embedding API and guarantees no empty arrays reach Chroma.
     // ------------------------------------------------------------------
-    const collectionName = fileUrl
-      .replace(/[^a-zA-Z0-9_-]/g, "_")
-      .substring(0, 63);
- 
-    const vectorStore = await Chroma.fromExistingCollection(embeddings, {
-      collectionName,
-      url: process.env.CHROMA_URL || "http://localhost:8000",
-    }).catch(() => null); // collection may not exist yet — that's fine
- 
-    let finalVectorStore;
-    if (vectorStore) {
-      // Collection exists — upsert the latest data
-      await vectorStore.addVectors(validEmbeddings, validDocs);
-      finalVectorStore = vectorStore;
-    } else {
-      // First time — create the collection with pre-validated embeddings
-      finalVectorStore = await Chroma.fromTexts(
-        validDocs.map((d) => d.pageContent),
-        validDocs.map((d) => d.metadata),
-        embeddings,
-        {
-          collectionName,
-          url: process.env.CHROMA_URL || "http://localhost:8000",
-        }
-      );
+// Ensure the URL has a protocol
+const finalValidDocs = [];
+const finalValidEmbeddings = [];
+
+for (let i = 0; i < docs.length; i++) {
+  try {
+    const vector = await embeddings.embedQuery(docs[i].pageContent);
+    if (vector && vector.length > 0) {
+      finalValidEmbeddings.push(vector);
+      finalValidDocs.push(docs[i]);
     }
+  } catch (error) {
+    console.error(`Gemini API Error on row ${i}:`, error.message || error);
+    if (error.message && error.message.includes("429")) {
+      console.warn("Hit Gemini Rate Limit. Proceeding with rows embedded so far...");
+      break;
+    }
+  }
+}
+
+if (finalValidDocs.length === 0) {
+  return res.status(500).json({
+    error: "Could not generate embeddings for any spreadsheet content.",
+  });
+}
+
+let chromaUrl = process.env.CHROMA_URL || "http://localhost:8000";
+if (!chromaUrl.startsWith("http://") && !chromaUrl.startsWith("https://")) {
+  chromaUrl = "http://" + chromaUrl;
+}
+
+const collectionName = fileUrl
+  .replace(/[^a-zA-Z0-9_-]/g, "_")
+  .substring(0, 63);
+
+let finalVectorStore = await Chroma.fromExistingCollection(embeddings, {
+  collectionName,
+  url: chromaUrl,
+}).catch(() => null);
+
+if (!finalVectorStore) {
+  finalVectorStore = new Chroma(embeddings, { collectionName, url: chromaUrl });
+}
+
+await finalVectorStore.addVectors(finalValidEmbeddings, finalValidDocs);
  
     // ------------------------------------------------------------------
     // 5. DEFINE TOOLS
     // ------------------------------------------------------------------
-    const searchSheetTool = tool(
-      async ({ query }) => {
-        const results = await finalVectorStore.similaritySearch(query, 5);
-        return JSON.stringify(
-          results.map((r) => ({ row: r.metadata.rowIndex, data: r.pageContent }))
-        );
-      },
+const searchSheetTool = tool(
+  async ({ query }) => {
+    // ✅ FIX: was `vectorStore` (undefined) — must be `finalVectorStore`
+    if (!finalVectorStore) {
+      return "The spreadsheet is completely empty. There is no data to search.";
+    }
+    const results = await finalVectorStore.similaritySearch(query, 5);
+    return JSON.stringify(results.map(r => ({ row: r.metadata.rowIndex, data: r.pageContent })));
+  },
       {
         name: "search_spreadsheet",
-        description:
-          "Search the spreadsheet to find relevant rows based on a semantic query. Returns the row index and data.",
+        description: "Search the spreadsheet to find relevant rows based on a semantic query. Returns the row index and the data.",
         schema: z.object({
           query: z.string().describe("The search query to find relevant information in the sheet"),
         }),
