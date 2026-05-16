@@ -12,6 +12,8 @@ axios.defaults.headers.common['Authorization'] = `Bearer ${token}`
 export const useAuthStore = create(
   persist(
     (set, get) => ({
+      isEmbedding: false,
+  setIsEmbedding: (status) => set({ isEmbedding: status }),
       theme: "ht-theme-main-dark",
       Token: null,
       setToken: (token) => set({Token: token}),

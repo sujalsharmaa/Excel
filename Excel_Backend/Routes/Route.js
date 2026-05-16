@@ -1110,6 +1110,87 @@ router.post("/api/chat", isAuthenticated, async (req, res) => {
   }
 });
 
+
+// NEW ROUTE: Pre-embeds the file when it is opened by the user
+router.post("/api/embed", isAuthenticated, async (req, res) => {
+  try {
+    const { fileUrl, fileNameFromUser } = req.body;
+
+    if (!fileUrl || !fileNameFromUser) {
+      return res.status(400).json({ error: "File URL and fileNameFromUser are required" });
+    }
+
+    // 1. LOAD DATA FROM REDIS
+    const file2DArrayStr = await redisCache.sendCommand(["JSON.GET", fileUrl]);
+    if (!file2DArrayStr) return res.status(404).json({ error: "File not found" });
+    const fileData = JSON.parse(file2DArrayStr).data;
+
+    // 2. PREPARE DOCUMENTS
+    const docs = fileData.map((row, index) => {
+      const hasContent = row.some(cell => cell?.toString().trim());
+      return hasContent ? new Document({
+        pageContent: row.join(", "),
+        metadata: { rowIndex: index, fileUrl }
+      }) : null;
+    }).filter(d => d !== null);
+
+    // 3. VECTOR STORE SETUP
+    let chromaUrl = process.env.CHROMA_URL || "http://localhost:8000";
+    if (!chromaUrl.startsWith("http")) chromaUrl = "http://" + chromaUrl;
+    const collectionName = fileUrl.replace(/[^a-zA-Z0-9_-]/g, "_").substring(0, 63);
+
+    let vectorStore = await Chroma.fromExistingCollection(embeddings, {
+      collectionName,
+      url: chromaUrl,
+    }).catch(() => null);
+
+    // 4. SMART EMBEDDING LOGIC (Batching + Progress)
+    let isPopulated = false;
+    if (vectorStore) {
+      const existingDocs = await vectorStore.similaritySearch("test", 1).catch(() => []);
+      if (existingDocs.length > 0) isPopulated = true;
+    } else {
+      vectorStore = new Chroma(embeddings, { collectionName, url: chromaUrl });
+    }
+
+    if (!isPopulated) {
+      const finalValidDocs = [];
+      const finalValidEmbeddings = [];
+      const BATCH_SIZE = 5; 
+
+      for (let i = 0; i < docs.length; i += BATCH_SIZE) {
+        const batch = docs.slice(i, i + BATCH_SIZE);
+        try {
+          await redisCache.publish(fileNameFromUser, JSON.stringify([{
+            type: "CHAT_PROGRESS",
+            message: `Analyzing data: ${Math.round((i / docs.length) * 100)}% complete...`,
+            fileNameFromUser
+          }]));
+
+          const batchEmbeds = await embeddings.embedDocuments(batch.map(d => d.pageContent));
+          finalValidEmbeddings.push(...batchEmbeds);
+          finalValidDocs.push(...batch);
+
+          // Rate limit protection for Gemini Free Tier
+          await new Promise(r => setTimeout(r, 2000)); 
+        } catch (err) {
+          console.error("Batch error:", err.message);
+          break; 
+        }
+      }
+      if (finalValidDocs.length > 0) {
+        await vectorStore.addVectors(finalValidEmbeddings, finalValidDocs);
+      }
+    }
+
+    return res.status(200).json({ success: true, message: "Embedding complete" });
+
+  } catch (error) {
+    console.error("Embed Init Error:", error);
+    return res.status(500).json({ error: "Internal server error during embedding" });
+  }
+});
+
 const verifyPaymentWithRazorpay = async (paymentId) => {
   try {
     // Fetch payment details from Razorpay to verify

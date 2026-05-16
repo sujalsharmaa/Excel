@@ -5,6 +5,7 @@ import { Input } from '@/components/ui/input';
 import { Send, Loader2, Copy, MinimizeIcon, MaximizeIcon } from 'lucide-react';
 import axios from 'axios';
 import { useAuthStore } from '@/Store/useStore.js';
+import LoadingSpinner from './LoadingSpinner';
 
 const SpreadsheetAssistant = ({ hotInstance }) => {
   const [userInput, setUserInput] = useState('');
@@ -12,7 +13,44 @@ const SpreadsheetAssistant = ({ hotInstance }) => {
   const [messages, setMessages] = useState([]);
   const [isCollapsed, setIsCollapsed] = useState(true);
   const messagesEndRef = useRef(null);
-  const { fileUrl, fileUserName } = useAuthStore();
+  
+  const { 
+    fileUrl, 
+    fileUserName, // Fixed: ensure this matches the Zustand state name
+    isEmbedding, 
+    setIsEmbedding 
+  } = useAuthStore();
+
+  useEffect(() => {
+    // Fixed: Use fileUserName to match the destructured variable
+    if (fileUrl && fileUserName) {
+      startEmbeddingProcess(fileUrl, fileUserName);
+    }
+  }, [fileUrl, fileUserName]);
+
+  const startEmbeddingProcess = async (url, name) => {
+    setIsEmbedding(true);
+    try {
+      const response = await axios.post(
+        `${import.meta.env.VITE_PUBLIC_API_URL}/embed`,
+        {
+          fileUrl: url,
+          fileNameFromUser: name
+        },
+        {
+          withCredentials: true 
+        }
+      );
+
+      if (response.data.success) {
+        console.log("Embedding complete!");
+      }
+    } catch (error) {
+      console.error("Error during pre-embedding:", error);
+    } finally {
+      setIsEmbedding(false); 
+    }
+  };
 
   useEffect(() => {
     scrollToBottom();
@@ -78,8 +116,9 @@ const SpreadsheetAssistant = ({ hotInstance }) => {
       const rawData = response.data.response;
 
       if (typeof rawData === 'string') {
-        // Strip markdown if AI wrapped it in ```json ...
-        // Check if it's a JSON string
+        // Fixed: Define cleanText before using it to prevent ReferenceErrors
+        const cleanText = rawData.replace(/```json/gi, '').replace(/```/g, '').trim();
+        
         if (cleanText.startsWith('{') || cleanText.startsWith('[')) {
           try {
             const parsed = JSON.parse(cleanText);
@@ -131,13 +170,13 @@ const SpreadsheetAssistant = ({ hotInstance }) => {
         isCollapsed ? 'h-10 w-[200px]' : 'h-96'
       }`}
     >
-      <div className="flex justify-between items-center p-2 border-b">
+      <div className="flex justify-between items-center p-2 border-b border-gray-700 shrink-0">
         <span className="text-sm font-medium text-white">Spreadsheet Assistant</span>
         <Button
           size="icon"
           variant="ghost"
           onClick={() => setIsCollapsed(!isCollapsed)}
-          className="h-6 w-6 hover:bg-green-500 bg-green-800"
+          className="h-6 w-6 hover:bg-green-500 bg-green-800 text-white"
         >
           {isCollapsed ? (
             <MaximizeIcon className="h-4 w-4" />
@@ -148,11 +187,22 @@ const SpreadsheetAssistant = ({ hotInstance }) => {
       </div>
 
       {!isCollapsed && (
-        <>
+        <div className="relative flex flex-col flex-1 overflow-hidden">
+          
+          {/* Embedding Loading Overlay */}
+          {isEmbedding && (
+            <div className="absolute inset-0 z-50 flex flex-col items-center justify-center bg-[#161D26]/90 backdrop-blur-sm">
+              <LoadingSpinner />
+              <p className="mt-4 text-sm font-medium text-slate-300 animate-pulse text-center px-4">
+                Analyzing spreadsheet data...
+              </p>
+            </div>
+          )}
+
           <CardContent className="flex-1 overflow-y-auto p-4">
             <div className="space-y-4">
               {messages.length === 0 && (
-                <div className="text-gray-500 text-sm">
+                <div className="text-gray-400 text-sm">
                   Hello! I can help you with your spreadsheet and answer general questions. Try:
                   <ul className="list-disc pl-5 mt-2">
                     <li>Set values in cells</li>
@@ -169,13 +219,13 @@ const SpreadsheetAssistant = ({ hotInstance }) => {
                       : "bg-green-600 text-white self-start w-fit h-fit flex items-start gap-2"
                   }`}
                 >
-                  <span className="flex-1">{msg.content}</span>
+                  <span className="flex-1 whitespace-pre-wrap">{msg.content}</span>
                   {msg.type === "assistant" && (
                      <Button
                        size="icon"
                        variant="ghost"
                        onClick={() => navigator.clipboard.writeText(msg.content)}
-                       className="h-5 w-5 text-gray-200 hover:text-white hover:bg-transparent p-0"
+                       className="h-5 w-5 text-gray-200 hover:text-white hover:bg-transparent p-0 shrink-0"
                      >
                        <Copy className="h-3 w-3" />
                      </Button>
@@ -186,19 +236,19 @@ const SpreadsheetAssistant = ({ hotInstance }) => {
             </div>
           </CardContent>
 
-          <form onSubmit={handleSubmit} className="p-4 border-t flex gap-2">
+          <form onSubmit={handleSubmit} className="p-4 border-t border-gray-700 flex gap-2 shrink-0 bg-[#161D26]">
             <Input
               value={userInput}
               onChange={(e) => setUserInput(e.target.value)}
               placeholder="Ask me anything..."
-              disabled={isProcessing}
+              disabled={isProcessing || isEmbedding}
               className="flex-1 text-black bg-slate-200"
             />
             <Button
               type="submit"
-              disabled={isProcessing}
+              disabled={isProcessing || isEmbedding}
               size="icon"
-              className="border-2 bg-violet-600 hover:bg-indigo-600"
+              className="border-2 bg-violet-600 hover:bg-indigo-600 shrink-0 text-white"
             >
               {isProcessing ? (
                 <Loader2 className="h-4 w-4 animate-spin" />
@@ -207,7 +257,7 @@ const SpreadsheetAssistant = ({ hotInstance }) => {
               )}
             </Button>
           </form>
-        </>
+        </div>
       )}
     </Card>
   );
