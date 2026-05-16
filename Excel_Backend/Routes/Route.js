@@ -1005,44 +1005,57 @@ const updateCellTool = tool(
     await redisCache.sendCommand(["JSON.SET", fileUrl, path, JSON.stringify(value)]);
 
     await redisCache.publish(fileNameFromUser, JSON.stringify([{
-      type: "UPDATE", 
-      row, 
-      col, 
-      value, 
-      fileNameFromUser, 
-      isWritePermitted: true, 
+      type: "UPDATE",
+      row,
+      col,
+      value,
+      fileNameFromUser,
+      isWritePermitted: true,
       id: "AI_ASSISTANT"
     }]));
 
-    return `Successfully updated cell at [${row}, ${col}] with: ${value}`;
+    return `Cell [${row},${col}] = "${value}" ✓`;
   },
-  { 
-    name: "update_cell", 
-    description: "REQUIRED: Use this tool to write data or create tables in the spreadsheet. Do not just show a table in chat.",
-    schema: z.object({ row: z.number(), col: z.number(), value: z.string() }) 
+  {
+    name: "update_cell",
+    description: "Write a value into a spreadsheet cell. You MUST call this for every cell when creating or updating data. Do NOT show data in chat — write it to the sheet using this tool.",
+    schema: z.object({
+      row: z.number().describe("0-indexed row number"),
+      col: z.number().describe("0-indexed column number"),
+      value: z.string().describe("The cell value to write")
+    })
   }
 );
 
-// 6. ENHANCED AGENT PROMPT
-const systemPrompt = `You are the "Sheetwise Assistant". Your primary goal is to manage the user's spreadsheet.
+// Replace the agent setup and invocation section in /api/chat
 
-CRITICAL RULES:
-1. If a user asks to "create", "insert", "add", or "update" data, you MUST use the 'update_cell' tool for EVERY cell.
-2. DO NOT just print a Markdown table in the chat. You must write it to the actual spreadsheet.
-3. Always read row 0 using 'search_spreadsheet' or 'read_cell_range' to identify column headers before writing.
-4. Rows and columns are 0-indexed.
-5. After updating the sheet, summarize what you did for the user.`;
+const systemPrompt = `You are the "Sheetwise Assistant". Your ONLY job is to manage spreadsheet data.
+
+STRICT RULES - NO EXCEPTIONS:
+1. NEVER write tables or data in chat text. ALWAYS use update_cell tool.
+2. For ANY request to create/add/insert/update data: call update_cell for EVERY single cell.
+3. First call search_spreadsheet with "row 0 headers" to find existing headers.
+4. Rows and columns are 0-indexed (row 0 = first row, col 0 = first column).
+5. After all cells are written, give a SHORT confirmation like "Done! Updated X cells."
+6. If user asks a question (no data writing needed), use search_spreadsheet and answer briefly.`;
 
 const agent = createReactAgent({
   llm,
   tools: [searchSheetTool, updateCellTool],
-  messageModifier: systemPrompt,
+  stateModifier: systemPrompt,  // use stateModifier, not messageModifier
 });
 
-const result = await agent.invoke({ messages: [new HumanMessage(userMessageContent)] });
+const result = await agent.invoke({
+  messages: [new HumanMessage(userMessageContent)],
+}, {
+  recursionLimit: 50,  // allow more tool call steps
+});
 
-// Log for debugging to see if the agent actually called the tools
-console.log("Agent Final Decision:", result.messages[result.messages.length - 1].content);
+// Extract only the final text response
+const finalMessage = result.messages[result.messages.length - 1];
+return res.status(200).json({ 
+  response: finalMessage.content 
+});
 
 return res.status(200).json({ response: result.messages[result.messages.length - 1].content });
  
