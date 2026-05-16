@@ -1194,8 +1194,6 @@ if (!isPopulated) {
   }
 });
 
-
-// NEW ROUTE: Pre-embeds the file when it is opened by the user
 router.post("/api/embed", isAuthenticated, async (req, res) => {
   try {
     const { fileUrl, fileNameFromUser } = req.body;
@@ -1237,13 +1235,18 @@ router.post("/api/embed", isAuthenticated, async (req, res) => {
       vectorStore = new Chroma(embeddings, { collectionName, url: chromaUrl });
     }
 
-    if (!isPopulated) {
+if (!isPopulated) {
       const finalValidDocs = [];
       const finalValidEmbeddings = [];
       const BATCH_SIZE = 5; 
 
       for (let i = 0; i < docs.length; i += BATCH_SIZE) {
         const batch = docs.slice(i, i + BATCH_SIZE);
+        
+        // 1. Strict validation: Remove empty documents before embedding
+        const cleanBatch = batch.filter(d => d.pageContent && d.pageContent.trim() !== "");
+        if (cleanBatch.length === 0) continue;
+
         try {
           await redisCache.publish(fileNameFromUser, JSON.stringify([{
             type: "CHAT_PROGRESS",
@@ -1251,9 +1254,18 @@ router.post("/api/embed", isAuthenticated, async (req, res) => {
             fileNameFromUser
           }]));
 
-          const batchEmbeds = await embeddings.embedDocuments(batch.map(d => d.pageContent));
-          finalValidEmbeddings.push(...batchEmbeds);
-          finalValidDocs.push(...batch);
+          // 2. Embed only the cleaned batch
+          const batchEmbeds = await embeddings.embedDocuments(cleanBatch.map(d => d.pageContent));
+          
+          // 3. Double-check for valid embeddings before adding to the final arrays
+          for (let j = 0; j < batchEmbeds.length; j++) {
+            if (batchEmbeds[j] && batchEmbeds[j].length > 0) {
+              finalValidEmbeddings.push(batchEmbeds[j]);
+              finalValidDocs.push(cleanBatch[j]);
+            } else {
+              console.warn(`⚠️ Warning: Received an empty embedding array. Skipping row index: ${cleanBatch[j].metadata.rowIndex}`);
+            }
+          }
 
           // Rate limit protection for Gemini Free Tier
           await new Promise(r => setTimeout(r, 2000)); 
@@ -1262,8 +1274,12 @@ router.post("/api/embed", isAuthenticated, async (req, res) => {
           break; 
         }
       }
-      if (finalValidDocs.length > 0) {
+      
+      // 4. Final sanity check before adding to Chroma
+      if (finalValidDocs.length > 0 && finalValidEmbeddings.length === finalValidDocs.length) {
         await vectorStore.addVectors(finalValidEmbeddings, finalValidDocs);
+      } else if (finalValidDocs.length > 0) {
+        console.error("❌ Mismatch detected between generated valid embeddings and documents length!");
       }
     }
 
@@ -1274,6 +1290,9 @@ router.post("/api/embed", isAuthenticated, async (req, res) => {
     return res.status(500).json({ error: "Internal server error during embedding" });
   }
 });
+
+
+
 
 const verifyPaymentWithRazorpay = async (paymentId) => {
   try {
