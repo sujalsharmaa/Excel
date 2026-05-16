@@ -6,73 +6,47 @@ import { Send, Loader2, Copy, MinimizeIcon, MaximizeIcon } from 'lucide-react';
 import axios from 'axios';
 import { useAuthStore } from '@/Store/useStore.js';
 
-
 const SpreadsheetAssistant = ({ hotInstance }) => {
   const [userInput, setUserInput] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
   const [messages, setMessages] = useState([]);
   const [isCollapsed, setIsCollapsed] = useState(true);
   const messagesEndRef = useRef(null);
-  const {fileUrl,fileUserName} = useAuthStore()
+  const { fileUrl, fileUserName } = useAuthStore();
 
   useEffect(() => {
     scrollToBottom();
-  }, [messages,isCollapsed]);
+  }, [messages, isCollapsed]);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   };
 
-  // Keep all existing functions unchanged
   const executeSpreadsheetAction = (action) => {
     try {
-      if (!action.type) return true;
+      if (!action.type || !hotInstance) return false;
 
-      console.log("Action->",action)
+      console.log("Executing Action ->", action);
+
+      // Force numerical indices to prevent Handsontable silent failures
+      const row = Number(action.row);
+      const col = Number(action.col);
 
       switch (action.type) {
         case 'SET_CELL_VALUE':
-            setTimeout(()=>{
-                hotInstance.setDataAtCell(action.row, action.col, action.value);
-        
-            },100)
+          hotInstance.setDataAtCell(row, col, action.value);
           break;
-          case 'SET_FORMULA': 
-          console.log(action[0],action.targetCol)
-            hotInstance.setDataAtCell(action.row, action.col, `${action.formula}`);
-            break;
-
+        case 'SET_FORMULA':
+          hotInstance.setDataAtCell(row, col, String(action.formula));
+          break;
         default:
-          return true;
+          console.warn('Unknown action type:', action.type);
+          return false;
       }
       return true;
     } catch (error) {
       console.error('Error executing spreadsheet action:', error);
       return false;
-    }
-  };
-
-  const processResponse = async (response) => {
-    try {
-      console.log("res=>",response)
-  
-      if (response.actions) {
-        //console.log("i picked up");
-        for (const action of response.actions) {
-          //console.log("action->", action);
-          const result = executeSpreadsheetAction(action);
-          setTimeout
-          if (!result) {
-            return "Sorry, I encountered an error while performing that action.";
-          }
-        }
-        return response || "Actions completed successfully.";
-      }
-  
-      return response;
-    } catch (error) {
-      console.error("Error processing response:", error);
-      return response;
     }
   };
 
@@ -82,57 +56,78 @@ const SpreadsheetAssistant = ({ hotInstance }) => {
 
     setIsProcessing(true);
     const newMessage = { type: "user", content: userInput };
-    setMessages(prev => [...prev, newMessage]);
+    setMessages((prev) => [...prev, newMessage]);
 
-try {
+    try {
       const response = await axios.post(
         `${import.meta.env.VITE_PUBLIC_API_URL}/chat`,
         {
           fileUrl: fileUrl,
           fileNameFromUser: fileUserName,
-          messages: [
-            {
-              role: "user",
-              content: userInput
-            }
-          ]
+          messages: [{ role: "user", content: userInput }],
         },
         {
           headers: { "Content-Type": "application/json" },
-          withCredentials: true
+          withCredentials: true,
         }
       );
 
-      console.log(response)
+      console.log("Raw API Response:", response.data);
 
-      const processedResponse = (res) =>{
-        try {
-            let data = JSON.parse(res.data.response).response
-            processResponse(JSON.parse(res.data.response))
-            return data
-        } catch (error) {
-          console.log("i did it bro!!")
-          processResponse(res.data.response)
-            return res.data.response;
+      let assistantReply = "Sorry, I couldn't understand that.";
+      const rawData = response.data.response;
+
+      if (typeof rawData === 'string') {
+        // Strip markdown if AI wrapped it in ```json ...
+        // Check if it's a JSON string
+        if (cleanText.startsWith('{') || cleanText.startsWith('[')) {
+          try {
+            const parsed = JSON.parse(cleanText);
+            
+            // Execute the actions if they exist
+            if (parsed.actions && Array.isArray(parsed.actions)) {
+              parsed.actions.forEach(executeSpreadsheetAction);
+            }
+            assistantReply = parsed.response || "I have updated the spreadsheet.";
+          } catch (err) {
+            console.error("Failed to parse AI JSON string:", err);
+            assistantReply = cleanText; // Fallback to plain text
+          }
+        } else {
+          // The AI just returned a conversational string, no JSON actions.
+          assistantReply = cleanText;
         }
+      } else if (typeof rawData === 'object' && rawData !== null) {
+        // Axios already parsed it to a JSON object
+        if (rawData.actions && Array.isArray(rawData.actions)) {
+          rawData.actions.forEach(executeSpreadsheetAction);
+        }
+        assistantReply = rawData.response || "I have updated the spreadsheet.";
       }
 
-      setMessages(prev => [...prev, { type: "assistant", content: processedResponse(response) }]);
-    } catch (error) {
-      console.error("Error:", error);
-      setMessages(prev => [
+      setMessages((prev) => [
         ...prev,
-        { type: "assistant", content: "Sorry, I encountered an error. Please try again." }
+        { type: "assistant", content: assistantReply },
       ]);
-    }
 
-    setUserInput("");
-    setIsProcessing(false);
+    } catch (error) {
+      console.error("API Error:", error);
+      setMessages((prev) => [
+        ...prev,
+        {
+          type: "assistant",
+          content: "Sorry, I encountered a network error. Please try again.",
+        },
+      ]);
+    } finally {
+      setUserInput("");
+      setIsProcessing(false);
+    }
   };
 
   return (
-    <Card 
-      className={`fixed bottom-4 right-4 w-80 flex flex-col bg-[#161D26] shadow-lg transition-all duration-300 ${
+    <Card
+      className={`fixed bottom-4 right-4 w-80 flex flex-col bg-[#161D26] shadow-lg transition-all duration-300 z-50 ${
         isCollapsed ? 'h-10 w-[200px]' : 'h-96'
       }`}
     >
@@ -162,33 +157,29 @@ try {
                   <ul className="list-disc pl-5 mt-2">
                     <li>Set values in cells</li>
                     <li>Apply formulas</li>
-                    <li>Sort columns</li>
-                    <li>Clear ranges</li>
-                    <li>Ask about spreadsheet features</li>
-                    <li>Get general help</li>
                   </ul>
                 </div>
               )}
               {messages.map((msg, idx) => (
                 <div
                   key={idx}
-                  className={`p-2 rounded-lg max-w-[75%] ${
+                  className={`p-2 rounded-lg max-w-[85%] text-sm ${
                     msg.type === "user"
-                      ? "bg-blue-500 text-white self-end ml-auto w-fit h-fit"
-                      : "bg-green-500 text-white self-start w-fit h-fit"
+                      ? "bg-blue-600 text-white self-end ml-auto w-fit h-fit"
+                      : "bg-green-600 text-white self-start w-fit h-fit flex items-start gap-2"
                   }`}
                 >
-                  {msg.content}
-                  <Button
-                    size="icon"
-                    variant="ghost"
-                    onClick={() => {
-                      navigator.clipboard.writeText(msg.content);
-                    }}
-                    className="text-gray-300 hover:text-white hover:bg-gray-600"
-                  >
-                    <Copy className="h-4 w-4" />
-                  </Button>
+                  <span className="flex-1">{msg.content}</span>
+                  {msg.type === "assistant" && (
+                     <Button
+                       size="icon"
+                       variant="ghost"
+                       onClick={() => navigator.clipboard.writeText(msg.content)}
+                       className="h-5 w-5 text-gray-200 hover:text-white hover:bg-transparent p-0"
+                     >
+                       <Copy className="h-3 w-3" />
+                     </Button>
+                  )}
                 </div>
               ))}
               <div ref={messagesEndRef} />

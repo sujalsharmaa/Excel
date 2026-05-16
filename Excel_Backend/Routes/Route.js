@@ -917,16 +917,16 @@ router.post("/api/chat", isAuthenticated, async (req, res) => {
   try {
     const { fileUrl, fileNameFromUser } = req.body;
     const userMessageContent = req.body.messages.find((msg) => msg.role === "user")?.content;
- 
+
     if (!fileUrl || !fileNameFromUser) {
       return res.status(400).json({ error: "File URL and fileNameFromUser are required" });
     }
- 
+
     // 1. LOAD DATA FROM REDIS
     const file2DArrayStr = await redisCache.sendCommand(["JSON.GET", fileUrl]);
     if (!file2DArrayStr) return res.status(404).json({ error: "File not found" });
     const fileData = JSON.parse(file2DArrayStr).data;
- 
+
     // 2. PREPARE DOCUMENTS
     const docs = fileData.map((row, index) => {
       const hasContent = row.some(cell => cell?.toString().trim());
@@ -946,7 +946,7 @@ router.post("/api/chat", isAuthenticated, async (req, res) => {
       url: chromaUrl,
     }).catch(() => null);
 
-    // 4. SMART EMBEDDING LOGIC (Batching + Progress)
+    // 4. SMART EMBEDDING LOGIC
     let isPopulated = false;
     if (vectorStore) {
       const existingDocs = await vectorStore.similaritySearch("test", 1).catch(() => []);
@@ -958,12 +958,11 @@ router.post("/api/chat", isAuthenticated, async (req, res) => {
     if (!isPopulated) {
       const finalValidDocs = [];
       const finalValidEmbeddings = [];
-      const BATCH_SIZE = 5; // Process 5 rows at a time for speed
+      const BATCH_SIZE = 5;
 
       for (let i = 0; i < docs.length; i += BATCH_SIZE) {
         const batch = docs.slice(i, i + BATCH_SIZE);
         try {
-          // Progress update to UI
           await redisCache.publish(fileNameFromUser, JSON.stringify([{
             type: "CHAT_PROGRESS",
             message: `Analyzing data: ${Math.round((i / docs.length) * 100)}% complete...`,
@@ -974,7 +973,6 @@ router.post("/api/chat", isAuthenticated, async (req, res) => {
           finalValidEmbeddings.push(...batchEmbeds);
           finalValidDocs.push(...batch);
 
-          // Rate limit protection for Gemini Free Tier
           await new Promise(r => setTimeout(r, 2000)); 
         } catch (err) {
           console.error("Batch error:", err.message);
@@ -986,79 +984,126 @@ router.post("/api/chat", isAuthenticated, async (req, res) => {
       }
     }
 
- // 5. DEFINE TOOLS
-const searchSheetTool = tool(
-  async ({ query }) => {
-    const results = await vectorStore.similaritySearch(query, 5);
-    return JSON.stringify(results.map(r => ({ row: r.metadata.rowIndex, data: r.pageContent })));
-  },
-  { 
-    name: "search_spreadsheet", 
-    description: "Search the spreadsheet to find relevant rows or data.",
-    schema: z.object({ query: z.string() }) 
-  }
-);
+    // 5. DEFINE TOOLS
+    const searchSheetTool = tool(
+      async ({ query }) => {
+        const results = await vectorStore.similaritySearch(query, 5);
+        return JSON.stringify(results.map(r => ({ row: r.metadata.rowIndex, data: r.pageContent })));
+      },
+      { 
+        name: "search_spreadsheet", 
+        description: "Search the spreadsheet for general topics, keywords, or to find headers.",
+        schema: z.object({ query: z.string() }) 
+      }
+    );
 
-const updateCellTool = tool(
-  async ({ row, col, value }) => {
-    const path = `$.data[${row}][${col}]`;
-    await redisCache.sendCommand(["JSON.SET", fileUrl, path, JSON.stringify(value)]);
+    // NEW TOOL: Gives the AI the ability to read specific coordinates
+    const readCellsTool = tool(
+      async ({ startRow, endRow, col }) => {
+        try {
+          const currentFileStr = await redisCache.sendCommand(["JSON.GET", fileUrl]);
+          const currentData = JSON.parse(currentFileStr).data;
+          let results = [];
+          
+          for(let r = startRow; r <= endRow; r++) {
+            if(currentData[r] !== undefined && currentData[r][col] !== undefined) {
+              results.push({ row: r, col: col, value: currentData[r][col] });
+            }
+          }
+          return JSON.stringify(results);
+        } catch (error) {
+          return "Error reading cells from database.";
+        }
+      },
+      {
+        name: "read_cells",
+        description: "Read the exact text from a specific column and range of rows. ALWAYS use this FIRST if the user asks you to translate, summarize, or modify existing cells so you know what the current text is.",
+        schema: z.object({
+          startRow: z.number().describe("The starting row index (0-indexed)"),
+          endRow: z.number().describe("The ending row index (0-indexed)"),
+          col: z.number().describe("The column index (0-indexed) to read from")
+        })
+      }
+    );
 
-    await redisCache.publish(fileNameFromUser, JSON.stringify([{
-      type: "UPDATE",
-      row,
-      col,
-      value,
-      fileNameFromUser,
-      isWritePermitted: true,
-      id: "AI_ASSISTANT"
-    }]));
+    const updateCellTool = tool(
+      async ({ row, col, value }) => {
+        const path = `$.data[${row}][${col}]`;
+        await redisCache.sendCommand(["JSON.SET", fileUrl, path, JSON.stringify(value)]);
 
-    return `Cell [${row},${col}] = "${value}" ✓`;
-  },
-  {
-    name: "update_cell",
-    description: "Write a value into a spreadsheet cell. You MUST call this for every cell when creating or updating data. Do NOT show data in chat — write it to the sheet using this tool.",
-    schema: z.object({
-      row: z.number().describe("0-indexed row number"),
-      col: z.number().describe("0-indexed column number"),
-      value: z.string().describe("The cell value to write")
-    })
-  }
-);
+        await redisCache.publish(fileNameFromUser, JSON.stringify([{
+          type: "UPDATE",
+          row,
+          col,
+          value,
+          fileNameFromUser,
+          isWritePermitted: true,
+          id: "AI_ASSISTANT"
+        }]));
 
-// Replace the agent setup and invocation section in /api/chat
+        return `Cell [${row},${col}] = "${value}" ✓`;
+      },
+      {
+        name: "update_cell",
+        description: "Write a value into a spreadsheet cell. You MUST call this for every cell when creating or updating data.",
+        schema: z.object({
+          row: z.number().describe("0-indexed row number"),
+          col: z.number().describe("0-indexed column number"),
+          value: z.string().describe("The cell value to write")
+        })
+      }
+    );
 
-const systemPrompt = `You are the "Sheetwise Assistant". Your ONLY job is to manage spreadsheet data.
+    // 6. SETUP AGENT
+    const systemPrompt = `You are the "Sheetwise Assistant", an expert AI data manager and multi-lingual translator.
 
-STRICT RULES - NO EXCEPTIONS:
-1. NEVER write tables or data in chat text. ALWAYS use update_cell tool.
-2. For ANY request to create/add/insert/update data: call update_cell for EVERY single cell.
-3. First call search_spreadsheet with "row 0 headers" to find existing headers.
-4. Rows and columns are 0-indexed (row 0 = first row, col 0 = first column).
-5. After all cells are written, give a SHORT confirmation like "Done! Updated X cells."
-6. If user asks a question (no data writing needed), use search_spreadsheet and answer briefly.`;
+    STRICT RULES - NO EXCEPTIONS:
+    1. NEVER write tables or data in chat text. ALWAYS use update_cell tool.
+    2. IF ASKED TO TRANSLATE OR MODIFY SPECIFIC CELLS: You MUST FIRST use the 'read_cells' tool to get the current text. You are a highly capable AI, you will translate the text yourself once you read it.
+    3. Rows and columns are 0-indexed (row 0 = first row, col 0 = A, col 1 = B).
+    4. For ANY request to create/add/insert/update data: call update_cell for EVERY single cell.
+    5. After all cells are written, give a SHORT confirmation like "Done! Updated X cells."`;
 
-const agent = createReactAgent({
-  llm,
-  tools: [searchSheetTool, updateCellTool],
-  stateModifier: systemPrompt,  // use stateModifier, not messageModifier
-});
+    // Make sure to add readCellsTool to the tools array!
+    const agent = createReactAgent({
+      llm,
+      tools: [searchSheetTool, readCellsTool, updateCellTool],
+      stateModifier: systemPrompt,
+    });
 
-const result = await agent.invoke({
-  messages: [new HumanMessage(userMessageContent)],
-}, {
-  recursionLimit: 50,  // allow more tool call steps
-});
+    const result = await agent.invoke({
+      messages: [new HumanMessage(userMessageContent)],
+    }, {
+      recursionLimit: 50, 
+    });
 
-// Extract only the final text response
-const finalMessage = result.messages[result.messages.length - 1];
-return res.status(200).json({ 
-  response: finalMessage.content 
-});
+    // Extract text response
+    const finalMessage = result.messages[result.messages.length - 1];
 
-return res.status(200).json({ response: result.messages[result.messages.length - 1].content });
- 
+    // Extract tool calls for the frontend
+    const frontendActions = [];
+    result.messages.forEach(msg => {
+      if (msg.tool_calls && Array.isArray(msg.tool_calls)) {
+        msg.tool_calls.forEach(call => {
+          if (call.name === "update_cell") {
+            frontendActions.push({
+              type: "SET_CELL_VALUE",
+              row: Number(call.args.row),
+              col: Number(call.args.col),
+              value: call.args.value
+            });
+          }
+        });
+      }
+    });
+
+    return res.status(200).json({ 
+      response: {
+        response: finalMessage.content,
+        actions: frontendActions
+      }
+    });
+
   } catch (error) {
     console.error("Chat Error:", error);
     return res.status(500).json({ error: "Internal server error" });
