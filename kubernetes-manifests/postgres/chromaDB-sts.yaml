@@ -9,8 +9,8 @@ kind: Service
 metadata:
   name: chromadb-headless
   namespace: chromadb
-labels:
-  app: chromadb
+  labels: # <--- FIXED: Now nested under metadata
+    app: chromadb
 spec:
   clusterIP: None
   selector:
