@@ -954,34 +954,53 @@ router.post("/api/chat", isAuthenticated, async (req, res) => {
       vectorStore = new Chroma(embeddings, { collectionName, url: chromaUrl });
     }
 
-    if (!isPopulated) {
-      const finalValidDocs = [];
-      const finalValidEmbeddings = [];
-      const BATCH_SIZE = 5;
+if (!isPopulated) {
+  const finalValidDocs = [];
+  const finalValidEmbeddings = [];
+  const BATCH_SIZE = 5;
 
-      for (let i = 0; i < docs.length; i += BATCH_SIZE) {
-        const batch = docs.slice(i, i + BATCH_SIZE);
-        try {
-          await redisCache.publish(fileNameFromUser, JSON.stringify([{
-            type: "CHAT_PROGRESS",
-            message: `Analyzing data: ${Math.round((i / docs.length) * 100)}% complete...`,
-            fileNameFromUser
-          }]));
+  for (let i = 0; i < docs.length; i += BATCH_SIZE) {
+    const batch = docs.slice(i, i + BATCH_SIZE);
+    
+    // Strict validation: Remove documents with empty text strings before sending to embedding engine
+    const cleanBatch = batch.filter(d => d.pageContent && d.pageContent.trim() !== "");
+    if (cleanBatch.length === 0) continue;
 
-          const batchEmbeds = await embeddings.embedDocuments(batch.map(d => d.pageContent));
-          finalValidEmbeddings.push(...batchEmbeds);
-          finalValidDocs.push(...batch);
+    try {
+      await redisCache.publish(fileNameFromUser, JSON.stringify([{
+        type: "CHAT_PROGRESS",
+        message: `Analyzing data: ${Math.round((i / docs.length) * 100)}% complete...`,
+        fileNameFromUser
+      }]));
 
-          await new Promise(r => setTimeout(r, 2000)); 
-        } catch (err) {
-          console.error("Batch error:", err.message);
-          break; 
+      // Generate the embeddings for the clean batch
+      const batchEmbeds = await embeddings.embedDocuments(cleanBatch.map(d => d.pageContent));
+      
+      // Double check each embedding array to ensure it's populated with values
+      for (let j = 0; j < batchEmbeds.length; j++) {
+        if (batchEmbeds[j] && batchEmbeds[j].length > 0) {
+          finalValidEmbeddings.push(batchEmbeds[j]);
+          finalValidDocs.push(cleanBatch[j]);
+        } else {
+          console.warn(`⚠️ Warning: Received an empty embedding array at batch index ${j}. Skipping row index: ${cleanBatch[j].metadata.rowIndex}`);
         }
       }
-      if (finalValidDocs.length > 0) {
-        await vectorStore.addVectors(finalValidEmbeddings, finalValidDocs);
-      }
+
+      // Rate limit protection for Gemini Free Tier
+      await new Promise(r => setTimeout(r, 2000)); 
+    } catch (err) {
+      console.error("Batch embedding creation error:", err.message);
+      // Optional: break or continue depending on whether you want to stop processing on error
     }
+  }
+
+  // Final sanity check: Ensure we actually have populated arrays to add to ChromaDB
+  if (finalValidDocs.length > 0 && finalValidEmbeddings.length === finalValidDocs.length) {
+    await vectorStore.addVectors(finalValidEmbeddings, finalValidDocs);
+  } else if (finalValidDocs.length > 0) {
+    console.error("❌ Mismatch detected between generated valid embeddings and documents length!");
+  }
+}
 
     // 5. DEFINE TOOLS
     const searchSheetTool = tool(
