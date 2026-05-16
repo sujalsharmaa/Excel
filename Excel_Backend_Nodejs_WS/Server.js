@@ -126,20 +126,22 @@ const fileClientsDrawing = new Map();
 const googleIdClientsDrawing = new Map();
 let pipeline = redisPublisher.pipeline();
 
-
-
 async function updateDrawing(fileKey, drawingData) {
-  // Create it fresh every time
-  const pipeline = redisPublisher.pipeline(); 
+  // Create a Redis pipeline for batch processing
+ 
 
+  // // Store the current drawing state in Redis JSON
   pipeline.call(
     "JSON.SET", 
     `drawing:${fileKey}`, 
     "$", 
     JSON.stringify(drawingData.scene)
   );
+  
+  // Publish the update to all subscribers
   pipeline.publish(fileKey, JSON.stringify(drawingData));
   
+  // Execute all operations in a single Redis call
   await pipeline.exec();
   console.log("Drawing update batch completed!");
 }
@@ -452,73 +454,69 @@ wss.on('connection', async (ws) => {
       case 'VIDEO_ANSWER':
         await redisPublisher.publish(data.fileNameFromUser, JSON.stringify(data)); 
         break;      
-default:
-        // Add safety check
-        if (!Array.isArray(data) || data.length === 0) {
-           console.log("Unrecognized or invalid format", data);
-           return;
-        }
-
-        data.senderId = data.id;
-        if(!data.isWritePermitted || !data.fileNameFromUser){
+      default:
+        // Attach the sender's WebSocket reference
+        console.log(data)
+        data[0].senderId = data[0].id;
+        if(!data[0].isWritePermitted || !data[0].fileNameFromUser){
           return;
         }
 
-        await redisPublisher.publish(data.fileNameFromUser, JSON.stringify(data));
-        await updateSpreadsheet(data.fileNameFromUser, data);
+        await redisPublisher.publish(data[0].fileNameFromUser, JSON.stringify(data))
+        await updateSpreadsheet(data[0].fileNameFromUser,data)
+        console.log(data[0].fileNameFromUser)
         break;
     }
-  })
+  });
   
-ws.on('close', async() => {
-  console.log('Client disconnected');
+  ws.on('close', async() => {
+    console.log('Client disconnected');
 
-  // Existing cleanup for fileClients...
-  for (const [fileName, clients] of fileClients.entries()) {
-    if (clients.has(ws)) {
-      clients.delete(ws);
-      if (clients.size === 0) {
-        await uploadAndCleanup(fileName);
-        fileClients.delete(fileName);
+  //  logger.info("WebSocket client disconnected");
+
+    for (const [fileName, clients] of fileClients.entries()) {
+
+      if (clients.has(ws)) {
+        clients.delete(ws);
+        console.log(`WebSocket removed from file: ${fileName}`,clients.size);
+        
+        // If no clients are left for a file, remove the entry
+
+        if (clients.size === 0) {
+          await uploadAndCleanup(fileName)
+          fileClients.delete(fileName);
+          console.log(`No more connections for file: ${fileName}, entry removed.`);
+        }
+        
+        break; // Stop searching once ws is found
       }
-      break; 
     }
-  }
 
-  // Existing cleanup for googleIdClients...
-  for(const [googleID, clientWs] of googleIdClients.entries()){
-    if(clientWs === ws){
-      googleIdClients.delete(googleID);
-      break;
-    }
-  }
-
-  // NEW: Cleanup for Drawing clients to prevent memory leaks
-  for (const [fileName, clients] of fileClientsDrawing.entries()) {
-    if (clients.has(ws)) {
-      clients.delete(ws);
-      if (clients.size === 0) {
-        fileClientsDrawing.delete(fileName);
+    for(const [googleID,clients] of googleIdClients.entries()){
+      if(clients===ws){
+        googleIdClients.delete(googleID)
+        break;
       }
-      break;
+      
     }
-  }
+    
+    //googleIdClients.delete(ws)
+    console.log("onclose",fileClientsDrawing.size)
+    console.log("onclose",googleIdClientsDrawing.size)
+  });
+  ws.on('error', (error) => {
+  //  logger.error("WebSocket error", { error });
+  });
 
-  for (const [googleID, clientWs] of googleIdClientsDrawing.entries()) {
-    if (clientWs === ws) {
-      googleIdClientsDrawing.delete(googleID);
-      break;
-    }
-  }
-})})
+});
 
 
 
 redisSubscriber.on('message', async (channel, message) => {
   let data = JSON.parse(message) 
 
-  let clients = fileClients.get(channel) || new Set();
-  let drawingClients = fileClientsDrawing.get(channel) || new Set();
+  let clients = fileClients.get(channel);
+  let drawingClients = fileClientsDrawing.get(channel)
   //console.log(data)
   console.log(`Received message on channel: ${channel}`);
 
