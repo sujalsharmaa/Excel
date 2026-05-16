@@ -24,7 +24,21 @@
 
 }
 
+/* Handsontable AI Highlight Classes */
+.htCore td.highlight-yellow {
+  background-color: #fef08a !important; /* Tailwind yellow-200 */
+  color: #000 !important;
+}
 
+.htCore td.highlight-red {
+  background-color: #fecaca !important; /* Tailwind red-200 */
+  color: #000 !important;
+}
+
+.htCore td.highlight-green {
+  background-color: #bbf7d0 !important; /* Tailwind green-200 */
+  color: #000 !important;
+}
 
 .ht-theme-main .htCore td{
   border-right: 1px solid rgba(0, 0, 0, 0.5); /* Light gray column lines */

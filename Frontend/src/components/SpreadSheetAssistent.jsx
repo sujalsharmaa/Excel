@@ -16,13 +16,12 @@ const SpreadsheetAssistant = ({ hotInstance }) => {
   
   const { 
     fileUrl, 
-    fileUserName, // Fixed: ensure this matches the Zustand state name
+    fileUserName, 
     isEmbedding, 
     setIsEmbedding 
   } = useAuthStore();
 
   useEffect(() => {
-    // Fixed: Use fileUserName to match the destructured variable
     if (fileUrl && fileUserName) {
       startEmbeddingProcess(fileUrl, fileUserName);
     }
@@ -66,17 +65,39 @@ const SpreadsheetAssistant = ({ hotInstance }) => {
 
       console.log("Executing Action ->", action);
 
-      // Force numerical indices to prevent Handsontable silent failures
-      const row = Number(action.row);
-      const col = Number(action.col);
+      // Default variables
+      const row = action.row !== undefined ? Number(action.row) : 0;
+      const col = action.col !== undefined ? Number(action.col) : 0;
+      const count = action.count ? Number(action.count) : 1;
 
       switch (action.type) {
         case 'SET_CELL_VALUE':
           hotInstance.setDataAtCell(row, col, action.value);
           break;
+        
         case 'SET_FORMULA':
           hotInstance.setDataAtCell(row, col, String(action.formula));
           break;
+        
+        // --- NEW FEATURES ADDED BELOW ---
+        
+        case 'DELETE_ROW':
+          // Removes 'count' number of rows starting from 'row' index
+          hotInstance.alter('remove_row', row, count);
+          break;
+          
+        case 'CREATE_ROW':
+          // Inserts 'count' number of empty rows at 'row' index
+          hotInstance.alter('insert_row_above', row, count);
+          break;
+          
+        case 'HIGHLIGHT_CELL':
+          // Adds a CSS class to the specific cell. 
+          // Note: action.className allows AI to specify colors (e.g., 'highlight-yellow', 'highlight-red')
+          hotInstance.setCellMeta(row, col, 'className', action.className || 'highlight-yellow');
+          hotInstance.render(); // Force re-render to show the styling immediately
+          break;
+
         default:
           console.warn('Unknown action type:', action.type);
           return false;
@@ -110,34 +131,26 @@ const SpreadsheetAssistant = ({ hotInstance }) => {
         }
       );
 
-      console.log("Raw API Response:", response.data);
-
       let assistantReply = "Sorry, I couldn't understand that.";
       const rawData = response.data.response;
 
       if (typeof rawData === 'string') {
-        // Fixed: Define cleanText before using it to prevent ReferenceErrors
         const cleanText = rawData.replace(/```json/gi, '').replace(/```/g, '').trim();
         
         if (cleanText.startsWith('{') || cleanText.startsWith('[')) {
           try {
             const parsed = JSON.parse(cleanText);
-            
-            // Execute the actions if they exist
             if (parsed.actions && Array.isArray(parsed.actions)) {
               parsed.actions.forEach(executeSpreadsheetAction);
             }
             assistantReply = parsed.response || "I have updated the spreadsheet.";
           } catch (err) {
-            console.error("Failed to parse AI JSON string:", err);
-            assistantReply = cleanText; // Fallback to plain text
+            assistantReply = cleanText; 
           }
         } else {
-          // The AI just returned a conversational string, no JSON actions.
           assistantReply = cleanText;
         }
       } else if (typeof rawData === 'object' && rawData !== null) {
-        // Axios already parsed it to a JSON object
         if (rawData.actions && Array.isArray(rawData.actions)) {
           rawData.actions.forEach(executeSpreadsheetAction);
         }
@@ -150,7 +163,6 @@ const SpreadsheetAssistant = ({ hotInstance }) => {
       ]);
 
     } catch (error) {
-      console.error("API Error:", error);
       setMessages((prev) => [
         ...prev,
         {
@@ -189,7 +201,6 @@ const SpreadsheetAssistant = ({ hotInstance }) => {
       {!isCollapsed && (
         <div className="relative flex flex-col flex-1 overflow-hidden">
           
-          {/* Embedding Loading Overlay */}
           {isEmbedding && (
             <div className="absolute inset-0 z-50 flex flex-col items-center justify-center bg-[#161D26]/90 backdrop-blur-sm">
               <LoadingSpinner />
@@ -203,10 +214,11 @@ const SpreadsheetAssistant = ({ hotInstance }) => {
             <div className="space-y-4">
               {messages.length === 0 && (
                 <div className="text-gray-400 text-sm">
-                  Hello! I can help you with your spreadsheet and answer general questions. Try:
-                  <ul className="list-disc pl-5 mt-2">
-                    <li>Set values in cells</li>
-                    <li>Apply formulas</li>
+                  Hello! I can help you modify your spreadsheet. Try:
+                  <ul className="list-disc pl-5 mt-2 space-y-1">
+                    <li>Set values & formulas</li>
+                    <li><span className="text-blue-400">Create or Delete rows</span></li>
+                    <li><span className="text-yellow-400">Highlight cells</span></li>
                   </ul>
                 </div>
               )}

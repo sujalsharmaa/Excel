@@ -1,63 +1,73 @@
-import React from 'react';
-import { HomeIcon, ArrowLeft } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
-import { useAuthStore } from '../Store/useStore.js';
+import React from "react";
+import { HomeIcon, ArrowLeft, LogOut } from "lucide-react";
+import { useNavigate } from "react-router-dom";
+import { useAuthStore } from "../Store/useStore";
 
-export const NotFound=()=> {
-  const navigate = useNavigate()
-    const { logout, isLoading } = useAuthStore();
+export const NotFound = () => {
+  const navigate = useNavigate();
+
+  const { logout, isLoading } = useAuthStore();
+
   const goBack = () => {
-    navigate(-1)
+    // fallback to home if no history exists
+    if (window.history.length > 1) {
+      navigate(-1);
+    } else {
+      navigate("/");
+    }
   };
 
   const goHome = () => {
-    navigate("/admin")
+    navigate("/");
   };
+
   const handleLogout = async () => {
-    await logout(navigate); // Pass the navigate function to logout
-    navigate("/")
+    try {
+      await logout();
+      navigate("/");
+    } catch (error) {
+      console.error("Logout failed:", error);
+    }
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-gray-50 to-gray-100 flex items-center justify-center p-4">
-      <div className="max-w-2xl w-full text-center space-y-8">
-        {/* 404 Text */}
+    <div className="min-h-screen bg-gradient-to-b from-gray-50 to-gray-100 flex items-center justify-center px-4">
+      <div className="w-full max-w-2xl text-center space-y-8">
+        
+        {/* 404 Heading */}
         <div className="relative">
-          <h1 className="text-9xl font-bold text-gray-200 animate-pulse">404</h1>
-          <div className="absolute inset-0 flex items-center justify-center">
-            <span className="text-2xl font-medium text-gray-800">Oops! Page Not Found</span>
+          <h1 className="text-[120px] sm:text-[180px] font-extrabold text-gray-200 animate-pulse select-none">
+            404
+          </h1>
+
+          <div className="relative inset-0 flex items-center justify-center">
+            <h2 className="text-2xl sm:text-3xl font-semibold text-gray-800">
+              Oops! Page Not Found
+            </h2>
           </div>
         </div>
-        
+
         {/* Description */}
         <div className="space-y-6">
-          <p className="text-gray-600 text-lg">
-            The page you're looking for seems to have gone on an adventure without us.
+          <p className="text-gray-600 text-base sm:text-lg max-w-xl mx-auto">
+            The page you're looking for may have been removed,
+            renamed, or is temporarily unavailable.
           </p>
-          
-          {/* Illustration */}
-          <div className="flex justify-center my-8">
-            <div className="relative w-40 h-40">
-              <div className="absolute inset-0 bg-red-100 rounded-full opacity-50 animate-ping" />
-              <div className="relative flex items-center justify-center">
-                <span className="text-8xl">🚀</span>
-              </div>
-            </div>
-          </div>
-          
-          {/* Action Buttons */}
-          <div className="flex flex-col sm:flex-row gap-4 justify-center items-center">
+
+          {/* Buttons */}
+          <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
+            
             <button
               onClick={goBack}
-              className="flex items-center px-6 py-3 bg-gray-800 text-white rounded-lg hover:bg-gray-700 transition-colors duration-200 gap-2"
+              className="flex items-center gap-2 rounded-xl bg-gray-800 px-6 py-3 text-white transition-all duration-200 hover:bg-gray-700 hover:scale-105 active:scale-95"
             >
               <ArrowLeft size={20} />
               Go Back
             </button>
-            
+
             <button
               onClick={goHome}
-              className="flex items-center px-6 py-3 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors duration-200 gap-2"
+              className="flex items-center gap-2 rounded-xl bg-blue-500 px-6 py-3 text-white transition-all duration-200 hover:bg-blue-600 hover:scale-105 active:scale-95"
             >
               <HomeIcon size={20} />
               Home Page
@@ -65,18 +75,22 @@ export const NotFound=()=> {
 
             <button
               onClick={handleLogout}
-              className="flex items-center px-6 py-3 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors duration-200 gap-2"
+              disabled={isLoading}
+              className="flex items-center gap-2 rounded-xl bg-red-500 px-6 py-3 text-white transition-all duration-200 hover:bg-red-600 hover:scale-105 active:scale-95 disabled:cursor-not-allowed disabled:opacity-70"
             >
-              Logout
+              <LogOut size={20} />
+
+              {isLoading ? "Logging out..." : "Logout"}
             </button>
           </div>
         </div>
-        
-        {/* Footer Message */}
-        <p className="text-gray-500 mt-8">
+
+        {/* Footer */}
+        <p className="pt-6 text-sm text-gray-500">
           If you believe this is a mistake, please contact support.
         </p>
       </div>
     </div>
   );
-}
+};
+

@@ -6,15 +6,15 @@ import ExcelClone from './Sheetwise.jsx';
 export const FileViewerbyToken = () => {
   const { FILEURL,token } = useParams();
   const navigate = useNavigate();
-  const {setToken,setIsLoading} = useAuthStore()
+  const {setFileToken,setIsLoading} = useAuthStore()
   const { LoadFileByToken } = useSpreadsheetStore();
  
-
+console.log(FILEURL,token)
   useEffect(() => {
     const fetchFile = async () => {
         if (token && FILEURL) {
             try {
-                setToken(token)
+                setFileToken(token)
                 await LoadFileByToken(FILEURL,token,navigate);
             } catch (error) {
                 console.log('Error loading file:',error.message);

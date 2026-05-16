@@ -128,6 +128,7 @@ router.post("/api/newfile", isAuthenticated, async (req, res) => {
     const { fileNamebyUser, UserPermissions } = req.body;
     const googleId = req.user.id;
     const userEmail = req.user.email;
+    console.log(UserPermissions)
 
     const result1 = await User.query(
       `SELECT file_name_user FROM project_files WHERE google_id = $1;`,
@@ -141,8 +142,6 @@ router.post("/api/newfile", isAuthenticated, async (req, res) => {
 
     // Generate a unique file ID
     const fileName = `file_${Date.now()}_${googleId}.csv`;
-        // Send success response to user ASAP
-    res.json({ success: true,fileId: fileName });
 
     // Generate an empty CSV buffer (100 rows x 15 columns)
     const emptyCSV = Array(100)
@@ -162,58 +161,57 @@ router.post("/api/newfile", isAuthenticated, async (req, res) => {
     );
 
 
-    // Perform DB tasks in background
-    setImmediate(async () => {
-      try {
+    // --- SYNCHRONOUS DB TASKS START HERE ---
 
-        // Insert file record into the database
-        await User.query(
-          `INSERT INTO project_files (google_id, file_id, file_name_user, location, email)
-           VALUES ($1, $2, $3, $4, $5)`,
-          [googleId, fileName, fileNamebyUser, fileUrl, userEmail]
+    // Insert file record into the database
+    await User.query(
+      `INSERT INTO project_files (google_id, file_id, file_name_user, location, email)
+       VALUES ($1, $2, $3, $4, $5)`,
+      [googleId, fileName, fileNamebyUser, fileUrl, userEmail]
+    );
+
+    // Process user permissions
+    const permissions = [
+      {
+        userId: googleId,
+        email: userEmail,
+        read: true,
+        write: true,
+        isAdmin: true,
+      },
+      ...await Promise.all(UserPermissions.map(async (u) => {
+        const userResult = await User.query(
+          `SELECT google_id FROM users WHERE email = $1`,
+          [u.email]
         );
+        return {
+          userId: userResult.rows?.google_id,
+          email: u.email,
+          read: u.permission === 'view' || u.permission === 'edit',
+          write: u.permission === 'edit',
+          isAdmin: false
+        };
+      }))
+    ];
 
-        // Process user permissions
-        const permissions = [
-          {
-            userId: googleId,
-            email: userEmail,
-            read: true,
-            write: true,
-            isAdmin: true,
-          },
-          ...await Promise.all(UserPermissions.map(async (u) => {
-            const userResult = await User.query(
-              `SELECT google_id FROM users WHERE email = $1`,
-              [u.email]
-            );
-            return {
-              userId: userResult.rows[0]?.google_id,
-              email: u.email,
-              read: u.permission === 'view' || u.permission === 'edit',
-              write: u.permission === 'edit',
-              isAdmin: false
-            };
-          }))
-        ];
+    // Insert valid permissions
+    const validPermissions = permissions.filter(p => p.userId);
+    for (const perm of validPermissions) {
+      await User.query(
+        `INSERT INTO file_permissions 
+         (file_id, user_id, email, read_permission, write_permission, is_admin)
+         VALUES ($1, $2, $3, $4, $5, $6)
+         ON CONFLICT (file_id, user_id) DO UPDATE SET
+           read_permission = EXCLUDED.read_permission,
+           write_permission = EXCLUDED.write_permission`,
+        [fileName, perm.userId, perm.email, perm.read, perm.write, perm.isAdmin]
+      );
+    }
+    
+    // --- SYNCHRONOUS DB TASKS END HERE ---
 
-        // Insert valid permissions
-        const validPermissions = permissions.filter(p => p.userId);
-        for (const perm of validPermissions) {
-          await User.query(
-            `INSERT INTO file_permissions 
-             (file_id, user_id, email, read_permission, write_permission, is_admin)
-             VALUES ($1, $2, $3, $4, $5, $6)
-             ON CONFLICT (file_id, user_id) DO UPDATE SET
-               read_permission = EXCLUDED.read_permission,
-               write_permission = EXCLUDED.write_permission`,
-            [fileName, perm.userId, perm.email, perm.read, perm.write, perm.isAdmin]
-          );
-        }
-      } catch (error) {
-        console.error("Background task error:", error);
-      }
-    });
+    // Send success response to user ONLY AFTER DB is fully updated
+    res.json({ success: true, fileId: fileName });
 
   } catch (error) {
     console.error("File creation error:", error);
@@ -379,9 +377,10 @@ router.post("/api/newfile", isAuthenticated, async (req, res) => {
 router.post("/api/email", isAuthenticated, async (req, res) => {
   try {
     const { email, file_id,fileName } = req.body;
-    const name = req.user.display_name;
+    const name = req.user.displayName;
     const google_id = req.user.id;
     const link = `${process.env.FRONTEND_URL}/file/${file_id}`;
+    console.log(name)
 
     // Generate signed URL for file access
     const signedUrl = await generateSignedUrl(
@@ -564,7 +563,7 @@ router.post("/api/admin/generateToken", isAuthenticated, async (req, res) => {
     console.log("i send data from db =>",`${process.env.FRONTEND_URL}/token/file/${fileId}/${token}`)
     return res.json({
       token: token,
-      url: `${process.env.FRONTEND_URL}/${fileId}/${token}`,
+      url: `${process.env.FRONTEND_URL}/token/file/${fileId}/${token}`,
       expiresAt: Date.now() + (expiresIn * 1000)
     });
 
@@ -997,7 +996,6 @@ router.post("/api/chat", isAuthenticated, async (req, res) => {
       }
     );
 
-    // NEW TOOL: Gives the AI the ability to read specific coordinates
     const readCellsTool = tool(
       async ({ startRow, endRow, col }) => {
         try {
@@ -1054,20 +1052,69 @@ router.post("/api/chat", isAuthenticated, async (req, res) => {
       }
     );
 
+    // --- NEW TOOLS ---
+
+    const deleteRowTool = tool(
+      async ({ row, count }) => {
+        // Instructs the frontend to remove the row from Handsontable
+        return `Deleted ${count} row(s) starting at index ${row} ✓`;
+      },
+      {
+        name: "delete_row",
+        description: "Delete one or more rows from the spreadsheet.",
+        schema: z.object({
+          row: z.number().describe("The 0-indexed starting row to delete"),
+          count: z.number().default(1).describe("Number of rows to delete (usually 1)")
+        })
+      }
+    );
+
+    const createRowTool = tool(
+      async ({ row, count }) => {
+        // Instructs the frontend to insert new empty rows into Handsontable
+        return `Created ${count} new row(s) at index ${row} ✓`;
+      },
+      {
+        name: "create_row",
+        description: "Insert new blank rows into the spreadsheet.",
+        schema: z.object({
+          row: z.number().describe("The 0-indexed row number where new rows should be inserted"),
+          count: z.number().default(1).describe("Number of empty rows to insert")
+        })
+      }
+    );
+
+    const highlightCellTool = tool(
+      async ({ row, col, className }) => {
+        // Instructs the frontend to apply a CSS class for highlighting
+        return `Highlighted cell [${row},${col}] with class ${className} ✓`;
+      },
+      {
+        name: "highlight_cell",
+        description: "Highlight a cell with a specific color. Available colors: 'highlight-yellow', 'highlight-red', 'highlight-green'.",
+        schema: z.object({
+          row: z.number().describe("0-indexed row number"),
+          col: z.number().describe("0-indexed column number"),
+          className: z.string().describe("The CSS class for the color. Choose from 'highlight-yellow', 'highlight-red', or 'highlight-green'.")
+        })
+      }
+    );
+
     // 6. SETUP AGENT
     const systemPrompt = `You are the "Sheetwise Assistant", an expert AI data manager and multi-lingual translator.
 
     STRICT RULES - NO EXCEPTIONS:
-    1. NEVER write tables or data in chat text. ALWAYS use update_cell tool.
-    2. IF ASKED TO TRANSLATE OR MODIFY SPECIFIC CELLS: You MUST FIRST use the 'read_cells' tool to get the current text. You are a highly capable AI, you will translate the text yourself once you read it.
+    1. NEVER write tables or data in chat text. ALWAYS use the appropriate tools.
+    2. IF ASKED TO TRANSLATE OR MODIFY SPECIFIC CELLS: You MUST FIRST use the 'read_cells' tool to get the current text.
     3. Rows and columns are 0-indexed (row 0 = first row, col 0 = A, col 1 = B).
     4. For ANY request to create/add/insert/update data: call update_cell for EVERY single cell.
-    5. After all cells are written, give a SHORT confirmation like "Done! Updated X cells."`;
+    5. You can now use create_row, delete_row, and highlight_cell to modify the spreadsheet structure and appearance.don't ask for color use yellow unless specified.
+    6. After all actions are complete, give a SHORT confirmation like "Done! Updated X cells and highlighted Y."`;
 
-    // Make sure to add readCellsTool to the tools array!
     const agent = createReactAgent({
       llm,
-      tools: [searchSheetTool, readCellsTool, updateCellTool],
+      // Added the new tools to the tools array!
+      tools: [searchSheetTool, readCellsTool, updateCellTool, deleteRowTool, createRowTool, highlightCellTool],
       stateModifier: systemPrompt,
     });
 
@@ -1077,10 +1124,9 @@ router.post("/api/chat", isAuthenticated, async (req, res) => {
       recursionLimit: 50, 
     });
 
-    // Extract text response
     const finalMessage = result.messages[result.messages.length - 1];
 
-    // Extract tool calls for the frontend
+    // 7. Extract tool calls for the frontend mapping
     const frontendActions = [];
     result.messages.forEach(msg => {
       if (msg.tool_calls && Array.isArray(msg.tool_calls)) {
@@ -1091,6 +1137,25 @@ router.post("/api/chat", isAuthenticated, async (req, res) => {
               row: Number(call.args.row),
               col: Number(call.args.col),
               value: call.args.value
+            });
+          } else if (call.name === "delete_row") {
+            frontendActions.push({
+              type: "DELETE_ROW",
+              row: Number(call.args.row),
+              count: Number(call.args.count || 1)
+            });
+          } else if (call.name === "create_row") {
+            frontendActions.push({
+              type: "CREATE_ROW",
+              row: Number(call.args.row),
+              count: Number(call.args.count || 1)
+            });
+          } else if (call.name === "highlight_cell") {
+            frontendActions.push({
+              type: "HIGHLIGHT_CELL",
+              row: Number(call.args.row),
+              col: Number(call.args.col),
+              className: call.args.className
             });
           }
         });

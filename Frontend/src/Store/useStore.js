@@ -29,6 +29,7 @@ export const useAuthStore = create(
       fileUserName: null,
       setfileUserName: (name) => set({ fileUserName: name }),
       setfileUrl: (url) => set({ fileUrl: url }),
+      setFileToken: (token) => set({token:token}),
 
       // Initialize Google Auth when needed
       initGoogleAuth: async () => {
@@ -301,9 +302,11 @@ export const useSpreadsheetStore = create(
           console.log("File created successfully:");
       
           // Redirect to the new file page
-          window.location.href = `${import.meta.env.VITE_FRONTEND_URL}/file/${response.data.fileId}`;
+         
       
-          return response.data;
+            console.log(response.data)
+           window.location.href = `${import.meta.env.VITE_FRONTEND_URL}/file/${response.data.fileId}`;
+          
         } catch (error) {
           let errorMessage = "An unexpected error occurred.";
       

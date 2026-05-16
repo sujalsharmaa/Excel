@@ -22,94 +22,81 @@ const areElementsEqual = (prevElements, newElements) => {
   });
 };
 
-
-
 const ExcalidrawWrapper = () => {
   const [excalidrawAPI, setExcalidrawAPI] = useState(null);
   const lastReceivedScene = useRef(null);
-  const { socket: ws,initializeWebSocket } = useWebSocketStore();
-  const { fileUrl: fileNameFromUser, user,isLoading,setIsLoading } = useAuthStore();
+  const lastSentScene = useRef(null); // Track sent state to avoid redundant emits
+  
+  const { socket: ws, initializeWebSocket } = useWebSocketStore();
+  const { fileUrl: fileNameFromUser, user, isLoading, setIsLoading } = useAuthStore();
   const navigate = useNavigate();
 
+  useEffect(() => {
+    initializeWebSocket();
+  }, [initializeWebSocket]); // Fixed invalid dependency array
 
-useEffect(()=>{
-  initializeWebSocket()
-},[ExcalidrawWrapper])
-  
   const handleChange = useCallback(
-    // handles request/sending
     throttle((elements, appState) => {
-      if (!ws || !fileNameFromUser || !user) {
-          return
-      };
+      if (!ws || !fileNameFromUser || !user || !excalidrawAPI) return;
 
-      const currentScene = {
-        elements,
-        appState: {
-          viewBackgroundColor: appState.viewBackgroundColor,
-          currentItemStrokeColor: appState.currentItemStrokeColor,
-        },
-      };
-
-
-
-      // Only send if the scene has actually changed
-      if (!areElementsEqual(lastReceivedScene.current?.elements, elements)) {
-        if (ws && ws.readyState === WebSocket.OPEN) {
-          ws.send(JSON.stringify({
-            type: 'DRAWING_UPDATE',
-            fileNameFromUser,
-            scene: currentScene,
-            sender: {
-              id: user.google_id,
-              name: user.name,
-              color: user.color,
-              lastActive: Date.now()
-            }
-          }));
-        }
+      // 1. Prevent Ping-Pong Effect: If elements exactly match what we just received, do NOT echo them back.
+      if (areElementsEqual(lastReceivedScene.current?.elements, elements)) {
+        return;
       }
-    }, 150),
-    [ws, fileNameFromUser, user]
+
+      // 2. Prevent redundant sends: If elements haven't changed since we last sent them, do NOT send.
+      if (areElementsEqual(lastSentScene.current?.elements, elements)) {
+        return;
+      }
+
+      const currentScene = { elements }; // Don't sync appState dynamically to avoid resetting the other user's selected tools/zoom
+      lastSentScene.current = currentScene;
+
+      if (ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({
+          type: 'DRAWING_UPDATE',
+          fileNameFromUser,
+          scene: currentScene,
+          sender: {
+            id: user.google_id,
+            name: user.name,
+            color: user.color,
+            lastActive: Date.now()
+          }
+        }));
+      }
+    }, 100), // Slightly lower throttle for smoother drawing sync
+    [ws, fileNameFromUser, user, excalidrawAPI]
   );
 
   useEffect(() => {
-    if (!ws || !excalidrawAPI) {
-
-       return
-    };
+    if (!ws || !excalidrawAPI) return;
 
     const handleMessage = (event) => {
-      // handles receive
       try {
         const data = JSON.parse(event.data);
         
         switch (data.type) {
           case 'DRAWING_HISTORY':
-
-            console.log("drawing history", data);
             if (data.history && excalidrawAPI) {
+              lastReceivedScene.current = data.history;
               excalidrawAPI.updateScene({
                 elements: data.history.elements,
-                appState: data.history.appState,
+                appState: data.history.appState, // Safe to set on initial load
                 commitToHistory: false
-              })}
-    
+              });
+            }
             break;
             
           case 'DRAWING_UPDATE':
-            console.log("we got update");
-           
-            // Add an extra check to ensure we're not processing our own updates
             if (data.scene && data.sender.id && user && data.sender.id !== user.google_id) {
               const currentElements = excalidrawAPI.getSceneElements();
               
-              // Only update if the scene has actually changed
               if (!areElementsEqual(currentElements, data.scene.elements)) {
-                lastReceivedScene.current = data.scene;  // Add this line to track last received
+                lastReceivedScene.current = data.scene;
                 excalidrawAPI.updateScene({
                   elements: data.scene.elements,
-                  appState: data.scene.appState,
+                  // We intentionally DO NOT update appState here anymore so we don't interrupt active users
                   commitToHistory: false
                 });
               }
@@ -122,15 +109,12 @@ useEffect(()=>{
     };
     
     ws.addEventListener('message', handleMessage);
-    return async() => {
+    return () => {
       ws.removeEventListener('message', handleMessage);
- 
     }
   }, [ws, excalidrawAPI, user]);
 
-  // Separate effect for getting drawing history to avoid null reference issues
   useEffect(() => {
-    // Only request drawing history when all dependencies are available
     if (ws && ws.readyState === WebSocket.OPEN && fileNameFromUser && user) {
       try {
         ws.send(JSON.stringify({
@@ -144,8 +128,8 @@ useEffect(()=>{
     }
   }, [ws, fileNameFromUser, user, excalidrawAPI]);
 
-  const handleClose = async() => {
-    setIsLoading(true)
+  const handleClose = async () => {
+    setIsLoading(true);
     if (excalidrawAPI && ws && ws.readyState === WebSocket.OPEN && fileNameFromUser && user) {
       try {
         const elements = excalidrawAPI.getSceneElements();
@@ -165,43 +149,41 @@ useEffect(()=>{
       }
     }
     navigate(-1);
-    setIsLoading(false)
+    setIsLoading(false);
   };
 
   return (
-  
-      <div className="fixed inset-0 bg-white" style={{zIndex: 1500}}>
-        <Button 
-          className="absolute top-4 right-4 bg-red-500"
-          onClick={handleClose}
-          style={{zIndex: 1500}}
-        >
-          <X className="w-4 h-4" />
-        </Button>
-        
-        <Excalidraw
-          excalidrawAPI={(api) => setExcalidrawAPI(api)}
-          onChange={handleChange}
-          initialData={{
-            appState: {
-              collaborators: [],
-            },
-          }}
-          theme="dark"
-          UIOptions={{
-            canvasActions: {
-              changeViewBackgroundColor: true,
-              clearCanvas: true,
-              export: { saveFileToDisk: true },
-              theme: true
-            }
-          }}
-          isCollaborating={false}
-          gridModeEnabled={true}
-        />
-         {isLoading && <LoadingSpinner/>}
-      </div>
- 
+    <div className="fixed inset-0 bg-white" style={{zIndex: 1500}}>
+      <Button 
+        className="absolute top-4 right-4 bg-red-500"
+        onClick={handleClose}
+        style={{zIndex: 1500}}
+      >
+        <X className="w-4 h-4" />
+      </Button>
+      
+      <Excalidraw
+        excalidrawAPI={(api) => setExcalidrawAPI(api)}
+        onChange={handleChange}
+        initialData={{
+          appState: {
+            collaborators: [],
+          },
+        }}
+        theme="dark"
+        UIOptions={{
+          canvasActions: {
+            changeViewBackgroundColor: true,
+            clearCanvas: true,
+            export: { saveFileToDisk: true },
+            theme: true
+          }
+        }}
+        isCollaborating={true} // CRITICAL FIX: set to true to protect in-progress strokes
+        gridModeEnabled={true}
+      />
+      {isLoading && <LoadingSpinner/>}
+    </div>
   );
 };
 
