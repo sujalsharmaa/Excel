@@ -40,7 +40,7 @@ apiVersion: apps/v1
 kind: StatefulSet
 metadata:
   name: chromadb
-  namespace: chromadb
+  namespace: default
 spec:
   serviceName: chromadb-headless
   replicas: 1
