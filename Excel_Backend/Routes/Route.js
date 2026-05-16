@@ -32,13 +32,13 @@ const gemini = new GoogleGenerativeAI(process.env.GEMINI_KEYS_2);
 
 // Initialize LangChain Models
 const llm = new ChatGoogleGenerativeAI({
-  model: "gemini-2.5-flash", // Changed from modelName to model
+  model: process.env.model, // Changed from modelName to model
   apiKey: process.env.GEMINI_KEYS_2,
   temperature: 0,
 });
 
 const embeddings = new GoogleGenerativeAIEmbeddings({
-  model: "gemini-embedding-001", 
+  model: process.env.embedding, 
   apiKey: process.env.GEMINI_KEYS_2,
   safetySettings: [
     {

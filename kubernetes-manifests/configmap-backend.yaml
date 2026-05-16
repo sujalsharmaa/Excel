@@ -14,4 +14,7 @@ data:
   PORT: "3000"
   FRONTEND_URL: "https://sujalsharma.in"
   region: "us-east-1"
+  model: "gemini-2.5-flash"
+  embedding: "gemini-embedding-001"
+  CHROMA_URL: "chromadb-service.chromadb.svc.cluster.local:8000"
 
