@@ -16,5 +16,5 @@ data:
   region: "us-east-1"
   model: "gemini-2.5-flash"
   embedding: "gemini-embedding-001"
-  CHROMA_URL: "http://chromadb-service.chromadb.svc.cluster.local:8000"
+  CHROMA_URL: "http://chromadb-service.default.svc.cluster.local:8000"
 
