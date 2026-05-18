@@ -14,7 +14,7 @@ spec:
     spec:
       containers:
         - name: backend-ws-container
-          image: sujalsharma/sheetwise-ws-backend:latest
+          image: sujalsharma/sheetwise-ws-backend:28
           imagePullPolicy: Always
           ports:
             - containerPort: 8080
