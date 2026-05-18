@@ -1,13 +1,10 @@
 pipeline {
     agent any 
-    tools {
-        nodejs 'nodejs'
-    }
     environment {
         SCANNER_HOME = tool 'sonar-scanner'
-        REPOSITORY_URI = "sujalsharma"
+        REPOSITORY_URI = "sujalsharmaa"
         imageName = "sheetwise-ws-backend"
-        imageTag = "v${BUILD_NUMBER}"
+        imageTag = "latest"
         REPO_NAME = "Excel"
     }
     stages {
@@ -18,19 +15,29 @@ pipeline {
         }
         stage('Checkout Code') {
             steps {
-                git branch: 'main', credentialsId: 'github-cred', url: 'https://github.com/sujalsharmaa/Url-Shortner.git'
+                git branch: 'main', credentialsId: 'git-cred', url: 'https://github.com/sujalsharmaa/Excel.git'
             }
         }
-        stage('OWASP Dependency-Check') {
-            steps {
-                dir('backend-nodejs') {
-                    withCredentials([string(credentialsId: 'nvd-cred', variable: 'NVD_API_KEY')]) {
-                        dependencyCheck additionalArguments: "--scan ./ --disableYarnAudit --disableNodeAudit --nvd.apiKey=${NVD_API_KEY}", odcInstallation: 'DP-Check'
-                        dependencyCheckPublisher pattern: '**/dependency-check-report.xml'
-                    }
+
+stage('Sonarqube Analysis') {
+    steps {
+        dir('Excel_Backend') {
+            withSonarQubeEnv('sonar-scanner') {
+                withCredentials([string(credentialsId: 'sonar-token', variable: 'SONAR_TOKEN')]) {
+                    sh '''
+                    $SCANNER_HOME/bin/sonar-scanner \
+                    -Dsonar.projectKey=hello \
+                    -Dsonar.projectName=backend \
+                    -Dsonar.sources=. \
+                    -Dsonar.host.url=$SONAR_HOST_URL \
+                    -Dsonar.token=$SONAR_TOKEN
+                    '''
                 }
             }
         }
+    }
+}
+
         stage('Trivy File Scan') {
             steps {
                 dir('backend-nodejs') {
@@ -44,7 +51,7 @@ pipeline {
                     def dockerRegistry = "docker.io/sujalsharma"
                     echo "Building Docker Image: ${imageName}:${imageTag}"
 
-                    dir('backend-nodejs') {
+                    dir('Excel_Backend') {
                         sh 'docker system prune -f || true'
                         sh "docker build -t ${imageName}:${imageTag} ."
 
@@ -52,7 +59,7 @@ pipeline {
                             sh '''
                             echo "$DOCKER_PASSWORD" | docker login ${dockerRegistry} -u "$DOCKER_USERNAME" --password-stdin
                             docker tag ${imageName}:${imageTag} ${REPOSITORY_URI}/${imageName}:${imageTag}
-                            docker push ${REPOSITORY_URI}/${imageName}:${imageTag}
+                            docker push ${DOCKER_USERNAME}/${imageName}:${imageTag}
                             docker logout
                             '''
                         }
@@ -67,22 +74,22 @@ pipeline {
         }
         stage('Update Deployment File') {
             environment {
-                GIT_REPO_NAME = "Url-Shortner"
+                GIT_REPO_NAME = "Excel"
                 GIT_USER_NAME = "sujalsharmaa"
             }
             steps {
                 dir('kubernetes-manifests') {
-                    withCredentials([string(credentialsId: 'github-cred', variable: 'GITHUB_TOKEN')]) {
+                    withCredentials([string(credentialsId: 'git-cred', variable: 'GITHUB_TOKEN')]) {
                         sh '''
                             git config user.email "sujalsharma151@gmail.com"
                             git config user.name "sujalsharmaa"
                             BUILD_NUMBER=${BUILD_NUMBER}
                             echo $BUILD_NUMBER
-                            imageTag=$(grep -oP '(?<=urlshortner:)[^ ]+' backend-nodejs-deployment.yaml)
+                            imageTag=$(grep -oP '(?<=sheetwise-ws-backend:)[^ ]+' backend-ws-deployment.yaml)
                             echo $imageTag
-                            sed -i "s/${imageName}:${imageTag}/${imageName}:${BUILD_NUMBER}/" backend-nodejs-deployment.yaml
-                            git add backend-nodejs-deployment.yaml
-                            git commit -m "Update deployment Image to version \${BUILD_NUMBER}"
+                            sed -i "s/${imageName}:${imageTag}/${imageName}:${BUILD_NUMBER}/" backend-ws-deployment.yaml
+                            git add backend-ws-deployment.yaml
+                            git commit -m "Update deployment Image to version \${imageTag}"
                             git push https://${GITHUB_TOKEN}@github.com/${GIT_USER_NAME}/${GIT_REPO_NAME} HEAD:main
                         '''
                     }
@@ -125,9 +132,9 @@ pipeline {
                 emailext(
                     subject: "${jobName} - Build #${buildNumber} - ${pipelineStatus.toUpperCase()}",
                     body: body,
-                    to: 'sujalsharma@gmail.com',
-                    from: 'techsharma@gmail.com',
-                    replyTo: 'sujalsharma@gmail.com',
+                    to: 'sujalsharma151@gmail.com',
+                    from: 'techsharma53@gmail.com',
+                    replyTo: 'sujalsharma151@gmail.com',
                     mimeType: 'text/html',
                     attachmentsPattern: 'trivy-image-report.html'
                 )
