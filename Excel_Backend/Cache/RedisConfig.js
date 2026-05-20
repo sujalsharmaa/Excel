@@ -11,7 +11,7 @@ export const redisCache = createClient({
 });
 
 redisCache.on("connect", async() => {
-  console.log("Redis Cache connected!");
+  console.log("Redis Cache connected! from auth-backend");
   console.log("Redis Cache JSON:"); //removed because json is not a property of the client.
 });
 

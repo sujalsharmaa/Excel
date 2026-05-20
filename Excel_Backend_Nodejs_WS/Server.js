@@ -72,7 +72,7 @@ const User = new Pool(dbConfig);
 // Test the connection
 User.connect()
   .then((client) => {
-    console.log('Connected to RDS PostgreSQL database!');
+    console.log('Connected to RDS PostgreSQL database! from ws backend');
     client.release(); // Release the client back to the pool
   })
   .catch((error) => console.error('Unable to connect to the database:', error));
@@ -106,7 +106,7 @@ const redisCache = createClient({
 });
 
 redisCache.on("connect", async() => {
-  console.log("Redis Cache connected!");
+  console.log("Redis Cache connected! from ws backend");
   console.log("Redis Cache JSON:",redisCache.json); //removed because json is not a property of the client.
 });
 await redisCache.connect()

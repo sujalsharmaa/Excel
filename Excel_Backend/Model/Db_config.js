@@ -24,7 +24,7 @@ export const User = new Pool(dbConfig);
 // Test the connection
 User.connect()
     .then((client) => {
-        console.log('Connected to RDS PostgreSQL database!');
+        console.log('Connected to RDS PostgreSQL database! from auth-backend');
         client.release(); // Release the client back to the pool
     })
     .catch((error) => console.error('Unable to connect to the database:', error));
