@@ -1,31 +1,46 @@
 apiVersion: apps/v1
 kind: Deployment
+
 metadata:
   name: backend-ws-deployment
+  labels:
+    app: backend-ws
+    version: v1
+
 spec:
   replicas: 1
+
   selector:
     matchLabels:
       app: backend-ws
+      version: v1
+
   template:
     metadata:
       labels:
         app: backend-ws
+        version: v1
+
     spec:
       containers:
         - name: backend-ws-container
           image: sujalsharma/sheetwise-ws-backend:latest
           imagePullPolicy: Always
+
           ports:
             - containerPort: 8080
+
           envFrom:
             - configMapRef:
                 name: sheetwise-ws-config
+
             - secretRef:
                 name: sheetwise-secrets
+
           volumeMounts:
             - name: sheetwise-ws-pv
               mountPath: /data/db
+
       volumes:
         - name: sheetwise-ws-pv
           persistentVolumeClaim:
