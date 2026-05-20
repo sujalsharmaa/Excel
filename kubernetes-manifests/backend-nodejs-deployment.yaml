@@ -1,31 +1,46 @@
 apiVersion: apps/v1
 kind: Deployment
+
 metadata:
   name: backend-nodejs-deployment
+  labels:
+    app: backend-nodejs
+    version: v1
+
 spec:
   replicas: 1
+
   selector:
     matchLabels:
       app: backend-nodejs
+      version: v1
+
   template:
     metadata:
       labels:
         app: backend-nodejs
+        version: v1
+
     spec:
       containers:
         - name: backend-nodejs-container
           image: sujalsharma/sheetwise-nodejs-backend:latest
           imagePullPolicy: Always
+
           ports:
             - containerPort: 3000
+
           envFrom:
             - configMapRef:
                 name: sheetwise-backend-config
+
             - secretRef:
                 name: sheetwise-secrets
+
           volumeMounts:
             - name: sheetwise-nodejs-pv
               mountPath: /data/db
+
       volumes:
         - name: sheetwise-nodejs-pv
           persistentVolumeClaim:
