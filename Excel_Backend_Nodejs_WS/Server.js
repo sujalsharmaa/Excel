@@ -13,7 +13,8 @@ import { createClient } from "redis";
 import morgan from "morgan";
 import winston from "winston";
 import {ElasticsearchTransport} from "winston-elasticsearch";
-import {client} from  "prom-client"
+import pkg from 'prom-client';
+const {client} = pkg;
 
 client.collectDefaultMetrics();
 dotenv.config();

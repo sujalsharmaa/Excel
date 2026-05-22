@@ -15,7 +15,8 @@ import winston from "winston";
 import NodeCache from "node-cache";
 import {ElasticsearchTransport} from "winston-elasticsearch";
 import axios from "axios";
-import {client} from  "prom-client"
+import pkg from 'prom-client';
+const {client} = pkg;
 dotenv.config();
 client.collectDefaultMetrics();
 const app = express();
