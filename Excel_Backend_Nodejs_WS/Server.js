@@ -13,10 +13,15 @@ import { createClient } from "redis";
 import morgan from "morgan";
 import winston from "winston";
 import {ElasticsearchTransport} from "winston-elasticsearch";
+import {client} from  "prom-client"
 
-
+client.collectDefaultMetrics();
 dotenv.config();
 
+app.get("/metrics", async (req, res) => {
+  res.set("Content-Type", client.register.contentType);
+  res.end(await client.register.metrics());
+});
 
 // // Elasticsearch Transport Configuration
 // const esTransportOpts = {

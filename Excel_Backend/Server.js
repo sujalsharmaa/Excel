@@ -15,12 +15,18 @@ import winston from "winston";
 import NodeCache from "node-cache";
 import {ElasticsearchTransport} from "winston-elasticsearch";
 import axios from "axios";
+import {client} from  "prom-client"
 dotenv.config();
-
+client.collectDefaultMetrics();
 const app = express();
 export const nodeCache = new NodeCache();
 app.use(express.json()); 
 app.use(morgan("dev"))
+
+app.get("/metrics", async (req, res) => {
+  res.set("Content-Type", client.register.contentType);
+  res.end(await client.register.metrics());
+});
 
 const esTransportOptions = {
   level: "info",
@@ -218,7 +224,7 @@ app.get("/api",(req,res)=>{
 })
 
 app.get("/api/health",(req,res)=>{
-  return res.status(200).send("health is working fine...")
+  return res.status(200).send("auth-backend health is working fine...")
 })
 
 
