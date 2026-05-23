@@ -15,17 +15,17 @@ import winston from "winston";
 import NodeCache from "node-cache";
 import {ElasticsearchTransport} from "winston-elasticsearch";
 import axios from "axios";
-import * as client from "prom-client";
+import * as promClient from "prom-client";
 dotenv.config();
-client.collectDefaultMetrics();
+promClient.collectDefaultMetrics();
 const app = express();
 export const nodeCache = new NodeCache();
 app.use(express.json()); 
 app.use(morgan("dev"))
 
 app.get("/metrics", async (req, res) => {
-  res.set("Content-Type", client.register.contentType);
-  res.end(await client.register.metrics());
+  res.set("Content-Type", promClient.register.contentType);
+  res.end(await promClient.register.metrics());
 });
 
 const esTransportOptions = {
