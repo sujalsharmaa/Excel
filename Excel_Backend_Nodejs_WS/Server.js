@@ -17,11 +17,6 @@ import * as promClient from "prom-client";
 promClient.collectDefaultMetrics();
 dotenv.config();
 
-app.get("/metrics", async (req, res) => {
-  res.set("Content-Type", promClient.register.contentType);
-  res.end(await promClient.register.metrics());
-});
-
 // // Elasticsearch Transport Configuration
 // const esTransportOpts = {
 //   level: 'info', // Log level (can be error, warn, info, etc.)
@@ -85,6 +80,12 @@ const app = express();
 app.use(cors());
 app.use(morgan("dev"))
 app.use(bodyParser.json());
+
+
+app.get("/metrics", async (req, res) => {
+  res.set("Content-Type", promClient.register.contentType);
+  res.end(await promClient.register.metrics());
+});
 
 
 const server = http.createServer(app);
