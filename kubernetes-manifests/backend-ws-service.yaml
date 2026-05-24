@@ -3,7 +3,7 @@ kind: Service
 metadata:
   name: backend-ws
   labels:
-    app: websocket
+    app: backend-ws
 spec:
   selector:
     app: backend-ws

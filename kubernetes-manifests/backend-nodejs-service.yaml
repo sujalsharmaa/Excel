@@ -3,7 +3,7 @@ kind: Service
 metadata:
   name: backend-nodejs-service
   labels:
-    app: auth-nodejs
+    app: backend-nodejs
 spec:
   selector:
     app: backend-nodejs
