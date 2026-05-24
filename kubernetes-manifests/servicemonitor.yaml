@@ -6,13 +6,14 @@ metadata:
   labels:
     release: monitoring
 spec:
+  jobLabel: app
   selector:
     matchExpressions:
       - key: app
         operator: In
         values:
-          - backend-nodejs
-          - backend-ws
+          - auth-nodejs
+          - websocket
 
   namespaceSelector:
     matchNames:

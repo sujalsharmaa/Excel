@@ -3,7 +3,8 @@ kind: Service
 metadata:
   name: backend-nodejs-service
   labels:
-    app: backend-nodejs
+    app: auth-nodejs
+    monitoring: sheetwise
 spec:
   selector:
     app: backend-nodejs
