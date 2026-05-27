@@ -17,7 +17,9 @@ import {ElasticsearchTransport} from "winston-elasticsearch";
 import axios from "axios";
 import * as promClient from "prom-client";
 dotenv.config();
-promClient.collectDefaultMetrics();
+promClient.collectDefaultMetrics({
+  timeout: 5000
+})
 const app = express();
 export const nodeCache = new NodeCache();
 app.use(express.json()); 
