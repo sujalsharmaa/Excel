@@ -14,7 +14,9 @@ import morgan from "morgan";
 import winston from "winston";
 import {ElasticsearchTransport} from "winston-elasticsearch";
 import * as promClient from "prom-client";
-promClient.collectDefaultMetrics();
+promClient.collectDefaultMetrics({
+  timeout: 5000
+})
 dotenv.config();
 
 // // Elasticsearch Transport Configuration
