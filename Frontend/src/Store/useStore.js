@@ -302,10 +302,11 @@ export const useSpreadsheetStore = create(
           console.log("File created successfully:");
       
           // Redirect to the new file page
-         
+         const result = { success: true, fileId: response.data.fileId };
       
-            console.log(response.data)
+         
            window.location.href = `${import.meta.env.VITE_FRONTEND_URL}/file/${response.data.fileId}`;
+           return result;
           
         } catch (error) {
           let errorMessage = "An unexpected error occurred.";
@@ -315,7 +316,8 @@ export const useSpreadsheetStore = create(
           } else if (error.request) {
             errorMessage = "No response from the server. Please try again.";
           } else {
-            errorMessage = error.message;
+
+            errorMessage = "error.message";
           }
       
           console.error("File creation failed:", errorMessage);

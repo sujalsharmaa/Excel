@@ -6,6 +6,7 @@ import { useAuthStore, useWebSocketStore } from "@/Store/useStore.js";
 import { toast } from "react-hot-toast";
 import EmojiPicker from "emoji-picker-react";
 import { Switch } from "@/components/ui/switch";
+import { createPortal } from 'react-dom';
 
 const ChatFeature = () => {
   
@@ -183,7 +184,7 @@ const ChatFeature = () => {
   };
 
   return (
-    <div className="relative">
+    <div className="relative z-[1200]">
       <Button
         onClick={() => setIsOpen(!isOpen)}
         variant="default"
@@ -294,6 +295,7 @@ const ChatFeature = () => {
             </Button>
           </div>
         </div>
+        
       )}
     </div>
   );

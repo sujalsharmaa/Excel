@@ -128,7 +128,7 @@ router.post("/api/newfile", isAuthenticated, async (req, res) => {
     const { fileNamebyUser, UserPermissions } = req.body;
     const googleId = req.user.id;
     const userEmail = req.user.email;
-    console.log(UserPermissions)
+
 
     const result1 = await User.query(
       `SELECT file_name_user FROM project_files WHERE google_id = $1;`,
@@ -180,12 +180,14 @@ router.post("/api/newfile", isAuthenticated, async (req, res) => {
         isAdmin: true,
       },
       ...await Promise.all(UserPermissions.map(async (u) => {
+        console.log(u.email)
         const userResult = await User.query(
           `SELECT google_id FROM users WHERE email = $1`,
           [u.email]
         );
+        console.log(userResult.rows)
         return {
-          userId: userResult.rows?.google_id,
+          userId: userResult.rows.length > 0 ? userResult.rows[0].google_id : null,
           email: u.email,
           read: u.permission === 'view' || u.permission === 'edit',
           write: u.permission === 'edit',
@@ -193,7 +195,7 @@ router.post("/api/newfile", isAuthenticated, async (req, res) => {
         };
       }))
     ];
-
+    console.log(permissions)
     // Insert valid permissions
     const validPermissions = permissions.filter(p => p.userId);
     for (const perm of validPermissions) {

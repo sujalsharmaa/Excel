@@ -5,7 +5,7 @@ dotenv.config();
 // Redis client for caching file data
 export const redisCache = createClient({
   socket: {
-    host: process.env.redis_host || "127.0.0.1",
+    host: process.env.redis_host,
     port: 6379,
   },
 });

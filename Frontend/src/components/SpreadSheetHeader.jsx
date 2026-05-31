@@ -1,656 +1,545 @@
 import React, { useRef, useState, useEffect } from 'react';
-  import { Search, Download, Upload, Menu, ChevronDown,Navigation,Plus, Minus, Type  } from 'lucide-react';
-  import { Button } from "@/components/ui/button";
-  import { Input } from "@/components/ui/input";
-  import * as XLSX from "xlsx";
-  import {
-    DropdownMenu,
-    DropdownMenuContent,
-    DropdownMenuItem,
-    DropdownMenuTrigger,
-  } from "@/components/ui/dropdown-menu";
-  import { useAuthStore,useSpreadsheetStore,useWebSocketStore } from '../Store/useStore.js';
-  import { useNavigate } from 'react-router-dom';
-  import NewFileButton from './NewFileButton.jsx';
-  import { AuthGuard } from './AuthGuard.jsx';
-  import { UserProfile } from './UserProfile';
-  import VisualizationPanel from './VisualizationPanel.jsx';
-  import StorageIndicator from './StorageIndicator.jsx';
-  import "../../src/index.css"
-  import ColumnTypeSelector from './ColumnTypeSelector.jsx';
-  import usePreventNavigation from './usePreventPagination.jsx';
-  import toast from 'react-hot-toast';
-  import ChatFeature from './ChatFeature';
-  import VideoCall from './VideoCall.jsx';
-  import SpreadsheetAssistant from './SpreadSheetAssistent.jsx';
+import { Search, Download, Upload, Menu, ChevronDown, Navigation, Plus, Minus, Type } from 'lucide-react';
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import * as XLSX from "xlsx";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { useAuthStore, useSpreadsheetStore, useWebSocketStore } from '../Store/useStore.js';
+import { useNavigate } from 'react-router-dom';
+import NewFileButton from './NewFileButton.jsx';
+import { AuthGuard } from './AuthGuard.jsx';
+import { UserProfile } from './UserProfile';
+import VisualizationPanel from './VisualizationPanel.jsx';
+import StorageIndicator from './StorageIndicator.jsx';
+import "../../src/index.css"
+import ColumnTypeSelector from './ColumnTypeSelector.jsx';
+import usePreventNavigation from './usePreventPagination.jsx';
+import toast from 'react-hot-toast';
+import ChatFeature from './ChatFeature';
+import VideoCall from './VideoCall.jsx';
+import SpreadsheetAssistant from './SpreadSheetAssistent.jsx';
 
 
-  const SpreadsheetHeader = ({ hotInstance }) => {
-    const { fileUserName, setTheme, theme,fileUrl,isAuthenticated,user,writePermission } = useAuthStore();
-    const navigate = useNavigate();
-    const fileInputRef = useRef(null);
-    const [uploadProgress, setUploadProgress] = useState(0);
-    const [uploadTarget, setUploadTarget] = useState('import'); // 'import' or 's3'
-    const [searchQuery, setSearchQuery] = useState('');
-    const [showStorage, setShowStorage] = useState(false);
-    const [bgColor, setBgColor] = useState('#ffffff');
-    const [selectedCells, setSelectedCells] = useState(null);
-    const [isSelectingCells, setIsSelectingCells] = useState(false);
-    const {isUploading, setIsUploading} = useSpreadsheetStore();
-    const [textColor, setTextColor] = useState('#000000'); // Default black text
-    const [Cols, setCols] = useState(1);
-    const [Rows, setRows] = useState(10);
-    const {socket} = useWebSocketStore()
+const SpreadsheetHeader = ({ hotInstance }) => {
+  const { fileUserName, setTheme, theme, fileUrl, isAuthenticated, user, writePermission } = useAuthStore();
+  const navigate = useNavigate();
+  const fileInputRef = useRef(null);
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [uploadTarget, setUploadTarget] = useState('import'); // 'import' or 's3'
+  const [searchQuery, setSearchQuery] = useState('');
+  const [showStorage, setShowStorage] = useState(false);
+  const [bgColor, setBgColor] = useState('#ffffff');
+  const [selectedCells, setSelectedCells] = useState(null);
+  const [isSelectingCells, setIsSelectingCells] = useState(false);
+  const { isUploading, setIsUploading } = useSpreadsheetStore();
+  const [textColor, setTextColor] = useState('#000000'); // Default black text
+  const [Cols, setCols] = useState(1);
+  const [Rows, setRows] = useState(10);
+  const { socket } = useWebSocketStore();
+  const [fontSize, setFontSize] = useState(14); // Default font size
 
-    usePreventNavigation();
-    useEffect(() => {
-      if (hotInstance && isSelectingCells) {
-        // Add event listener for cell selection
-        const onSelectionChange = () => {
-          const selected = hotInstance.getSelected();
-          if (selected && selected.length > 0) {
-            setSelectedCells(selected);
-          }
-        };
-        
-        hotInstance.addHook('afterSelectionEnd', onSelectionChange);
-        
-        return () => {
-          hotInstance.removeHook('afterSelectionEnd', onSelectionChange);
-        };
-      }
-    }, [hotInstance, isSelectingCells]);
+  usePreventNavigation();
 
-      // Function to add columns to the table
- const addColumns = (colCount) => {
-  if (!hotInstance) return;
-  
-  const numCols = parseInt(colCount, 10);
-  if (isNaN(numCols) || numCols <= 0) return;
-  
-  const currentColCount = hotInstance.countCols();
-  hotInstance.alter('insert_col_end', currentColCount - 1, numCols);
-  
-  if (socket?.readyState === WebSocket.OPEN) {
-    socket.send(JSON.stringify({
-      type: 'COL_ADD',
-      startCol: currentColCount,
-      amount: numCols,
-      id: user?.google_id,
-      fileNameFromUser: fileUrl,
-      isWritePermitted: writePermission
-    }));
-  }
-};  
-
-// Function to add rows to the table
-const addRows = (rowCount) => {
-  if (!hotInstance) return;
-  
-  const numRows = parseInt(rowCount, 10);
-  if (isNaN(numRows) || numRows <= 0) return;
-  
-  const currentRowCount = hotInstance.countRows();
-  hotInstance.alter('insert_row_below', currentRowCount - 1, numRows);
-  
-  if (socket?.readyState === WebSocket.OPEN) {
-    socket.send(JSON.stringify({
-      type: 'ROW_ADD',
-      startRow: currentRowCount,
-      amount: numRows,
-      id: user?.google_id,
-      fileNameFromUser: fileUrl,
-      isWritePermitted: writePermission
-    }));
-  }
-};
-
-    const handleExportCSV = () => {
-      if (!hotInstance) return;
-      const exportPlugin = hotInstance.getPlugin('exportFile');
-      exportPlugin.downloadFile('csv', {
-        filename: `spreadsheet_export_${new Date().toISOString().split('T')[0]}`,
-        fileExtension: 'csv',
-        mimeType: 'text/csv',
-        columnHeaders: true,
-        rowHeaders: true,
-      });
-    };
-
-    // Import CSV and load data into the grid
-
-
-    const handleImportCSV = async (event) => {
-      if (!hotInstance || !event.target.files?.[0]) return;
-    
-      try {
-        const file = event.target.files[0];
-        let data = [];
-    
-        if (file.name.endsWith(".csv")) {
-          // Handle CSV file
-          const text = await file.text();
-          const lines = text.split("\n");
-          data = lines.map((line) => line.split(",").map((cell) => cell.trim()));
-        } else if (
-          file.name.endsWith(".xlsx") ||
-          file.name.endsWith(".xls")
-        ) {
-          // Handle Excel file
-          const arrayBuffer = await file.arrayBuffer();
-          const workbook = XLSX.read(arrayBuffer, { type: "array" });
-          const sheetName = workbook.SheetNames[0]; // Use the first sheet
-          const worksheet = workbook.Sheets[sheetName];
-    
-          // Convert Excel to CSV
-          const csv = XLSX.utils.sheet_to_csv(worksheet);
-          const lines = csv.split("\n");
-          data = lines.map((line) => line.split(",").map((cell) => cell.trim()));
-        } else {
-          console.error("Unsupported file format");
-          return;
+  useEffect(() => {
+    if (hotInstance) {
+      const onSelectionChange = () => {
+        const selected = hotInstance.getSelected();
+        if (selected && selected.length > 0) {
+          setSelectedCells(selected);
         }
-    
-        // Load data into Handsontable
-        hotInstance.loadData(data);
-        hotInstance.render();
-      } catch (error) {
-        console.error("Error importing file:", error);
+      };
+
+      hotInstance.addHook('afterSelectionEnd', onSelectionChange);
+
+      return () => {
+        hotInstance.removeHook('afterSelectionEnd', onSelectionChange);
+      };
+    }
+  }, [hotInstance]);
+
+  const addColumns = (colCount) => {
+    if (!hotInstance) return;
+    const numCols = parseInt(colCount, 10);
+    if (isNaN(numCols) || numCols <= 0) return;
+    const currentColCount = hotInstance.countCols();
+    hotInstance.alter('insert_col_end', currentColCount - 1, numCols);
+
+    if (socket?.readyState === WebSocket.OPEN) {
+      socket.send(JSON.stringify({
+        type: 'COL_ADD',
+        startCol: currentColCount,
+        amount: numCols,
+        id: user?.google_id,
+        fileNameFromUser: fileUrl,
+        isWritePermitted: writePermission
+      }));
+    }
+  };
+
+  const addRows = (rowCount) => {
+    if (!hotInstance) return;
+    const numRows = parseInt(rowCount, 10);
+    if (isNaN(numRows) || numRows <= 0) return;
+    const currentRowCount = hotInstance.countRows();
+    hotInstance.alter('insert_row_below', currentRowCount - 1, numRows);
+
+    if (socket?.readyState === WebSocket.OPEN) {
+      socket.send(JSON.stringify({
+        type: 'ROW_ADD',
+        startRow: currentRowCount,
+        amount: numRows,
+        id: user?.google_id,
+        fileNameFromUser: fileUrl,
+        isWritePermitted: writePermission
+      }));
+    }
+  };
+
+  const handleExportCSV = () => {
+    if (!hotInstance) return;
+    const exportPlugin = hotInstance.getPlugin('exportFile');
+    exportPlugin.downloadFile('csv', {
+      filename: `spreadsheet_export_${new Date().toISOString().split('T')}`,
+      fileExtension: 'csv',
+      mimeType: 'text/csv',
+      columnHeaders: true,
+      rowHeaders: true,
+    });
+  };
+
+  const handleImportCSV = async (event) => {
+    if (!hotInstance) return;
+    try {
+      const file = event.target.files;
+      let data = [];
+
+      if (file.name.endsWith(".csv")) {
+        const text = await file.text();
+        const lines = text.split("\n");
+        data = lines.map((line) => line.split(",").map((cell) => cell.trim()));
+      } else if (file.name.endsWith(".xlsx") || file.name.endsWith(".xls")) {
+        const arrayBuffer = await file.arrayBuffer();
+        const workbook = XLSX.read(arrayBuffer, { type: "array" });
+        const sheetName = workbook.SheetNames;
+        const worksheet = workbook.Sheets[sheetName];
+        const csv = XLSX.utils.sheet_to_csv(worksheet);
+        const lines = csv.split("\n");
+        data = lines.map((line) => line.split(",").map((cell) => cell.trim()));
+      } else {
+        console.error("Unsupported file format");
+        return;
       }
-    };
-    
-    // Upload the file directly to S3 using a presigned URL
-    const {handleUploadToS3AndLoadFile} = useSpreadsheetStore();
-
-    // Use the file input's onChange to decide which action to perform
-    const handleFileChange = async (event) => {
-      if (uploadTarget === "import") {
-        handleImportCSV(event);
-      } else if (uploadTarget === "s3") {
-        const res = await handleUploadToS3AndLoadFile(event, setUploadProgress);
-        console.log("resp by handlechagne",res)
-        toast.success(res)
-      }
-      event.target.value = ""; // Reset input
-    };
-    
-
-    
-    const applyDynamicStyle = (color) => {
-      const className = `bg-${color.replace('#', '')}`; // Remove `#` to make a valid class
-      if (!document.querySelector(`.${className}`)) {
-        const style = document.createElement('style');
-        style.innerHTML = `.${className} { background-color: ${color} !important; }`;
-        document.head.appendChild(style);
-      }
-      return className;
-    };
-    
-    
-    const applyTextColorStyle = (color) => {
-      const className = `text-${color.replace('#', '')}`; // Remove `#` for valid class name
-      if (!document.querySelector(`.${className}`)) {
-        const style = document.createElement('style');
-        style.innerHTML = `.${className} { color: ${color} !important; }`;
-        document.head.appendChild(style);
-      }
-      return className;
-    };
-
-
-    // Example for handling theme change and search…
-    const handleThemeChange = (newTheme) => {
-      setTheme(newTheme);
-      if (!hotInstance) return;
-      window.location.reload()
-    };
-
-    const handleSearch = (query) => {
-      setSearchQuery(query);
-      if (hotInstance) {
-        const searchPlugin = hotInstance.getPlugin('search');
-        searchPlugin.query(query);
-        hotInstance.render();
-      }
-    };
-
-    const [fontSize, setFontSize] = useState(14); // Default font size
-
-    // Replace your cell selection useEffect with this version that just tracks selection changes
-    useEffect(() => {
-      if (hotInstance) {
-        // Add event listener for cell selection
-        const onSelectionChange = () => {
-          const selected = hotInstance.getSelected();
-          if (selected && selected.length > 0) {
-            setSelectedCells(selected);
-          }
-        };
-        
-        hotInstance.addHook('afterSelectionEnd', onSelectionChange);
-        
-        return () => {
-          hotInstance.removeHook('afterSelectionEnd', onSelectionChange);
-        };
-      }
-    }, [hotInstance]);
-
-            
-    
-    // Modify the font size styling function
-    const applyFontSizeStyle = (size) => {
-      const className = `font-size-${size}`;
-      if (!document.querySelector(`.${className}`)) {
-        const style = document.createElement('style');
-        style.innerHTML = `.${className} { font-size: ${size}px !important; }`;
-        document.head.appendChild(style);
-      }
-      return className;
-    };
-    
-    // Update these functions to apply changes immediately
-    const handleIncreaseFontSize = () => {
-      setFontSize(prev => {
-        const newSize = prev + 2;
-        applyStyleToSelection(applyFontSizeStyle(newSize), 'font-size');
-        return newSize;
-      });
-    };
-    
-    const handleDecreaseFontSize = () => {
-      setFontSize(prev => {
-        const newSize = Math.max(8, prev - 2); // Minimum font size of 8px
-        applyStyleToSelection(applyFontSizeStyle(newSize), 'font-size');
-        return newSize;
-      });
-    };
-    
-    // General function to apply any style to selection
-    const applyStyleToSelection = (styleClass, styleType) => {
-      if (!hotInstance || !selectedCells) return;
-    
-      selectedCells.forEach(([startRow, startCol, endRow, endCol]) => {
-        for (let row = Math.min(startRow, endRow); row <= Math.max(startRow, endRow); row++) {
-          for (let col = Math.min(startCol, endCol); col <= Math.max(startCol, endCol); col++) {
-            // Get existing class if any
-            const existingClass = hotInstance.getCellMeta(row, col).className || '';
-            
-            // Remove previous style of same type if it exists
-            let baseClass = existingClass;
-            if (styleType === 'font-size') {
-              baseClass = existingClass.replace(/\bfont-size-\d+\b/g, '').trim();
-            } else if (styleType === 'bg-color') {
-              baseClass = existingClass.replace(/\bbg-[0-9a-f]+\b/g, '').trim();
-            } else if (styleType === 'text-color') {
-              baseClass = existingClass.replace(/\btext-[0-9a-f]+\b/g, '').trim();
-            }
-            
-            // Apply new class
-            hotInstance.setCellMeta(row, col, 'className', 
-              baseClass ? `${baseClass} ${styleClass}` : styleClass);
-          }
-        }
-      });
-    
+      hotInstance.loadData(data);
       hotInstance.render();
-    };
-    
-    // Update these color application functions to work directly on selection
-    const handleBgColorChange = (color) => {
-      setBgColor(color);
-      const styleClass = applyDynamicStyle(color);
-      applyStyleToSelection(styleClass, 'bg-color');
-    };
-    
-    const handleTextColorChange = (color) => {
-      setTextColor(color);
-      const styleClass = applyTextColorStyle(color);
-      applyStyleToSelection(styleClass, 'text-color');
-    };
+    } catch (error) {
+      console.error("Error importing file:", error);
+    }
+  };
 
-    return (
-      
-      <div className="fixed top-0 w-full" style={{ zIndex: 1110 }}>
-          
-          <div className="py-1 px-4 text-white flex flex-wrap items-center justify-between gap-4 md:gap-6 shadow-md w-full bg-gray-900">
-  
-  {/* Left Section: Logo & Theme Selector */}
-  <div className="flex flex-wrap items-center gap-2">
+  const { handleUploadToS3AndLoadFile } = useSpreadsheetStore();
 
-    { <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="default" className="bg-gray-900 text-white w-[185px] rounded-none h-8 focus:outline-none" >
-              <img 
-      className="w-24 sm:w-32 md:w-40"
-      src="/sheetwise-high-resolution-logo.png" 
-      alt="Sheetwise Logo"
-    />
-                <ChevronDown className="w-4 h-4" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent
-                style={{ zIndex: 1200 }}
-            className="w-48 bg-white shadow-lg rounded-md border border-gray-200">
-             <DropdownMenuItem 
-                  onClick={()=>navigate("/contact_us")}
-      
-                className={`hover:bg-red-100 cursor-pointer ${isUploading ? "opacity-50 cursor-not-allowed" : ""}`}
-                disabled={isUploading}
-              >
-                <Navigation />
-                Contact Us
-              </DropdownMenuItem>
+  const handleFileChange = async (event) => {
+    if (uploadTarget === "import") {
+      handleImportCSV(event);
+    } else if (uploadTarget === "s3") {
+      const res = await handleUploadToS3AndLoadFile(event, setUploadProgress);
+      toast.success(res);
+    }
+    event.target.value = "";
+  };
 
-              <DropdownMenuItem 
-                  onClick={()=>navigate("/documentation")}
-      
-                className={`hover:bg-red-100 cursor-pointer ${isUploading ? "opacity-50 cursor-not-allowed" : ""}`}
-                disabled={isUploading}
-              >
-                <Navigation />
-                Documentation
-              </DropdownMenuItem>
+  const applyDynamicStyle = (color) => {
+    const className = `bg-${color.replace('#', '')}`;
+    if (!document.querySelector(`.${className}`)) {
+      const style = document.createElement('style');
+      style.innerHTML = `.${className} { background-color: ${color} !important; }`;
+      document.head.appendChild(style);
+    }
+    return className;
+  };
 
-            </DropdownMenuContent>
-          </DropdownMenu> }
+  const applyTextColorStyle = (color) => {
+    const className = `text-${color.replace('#', '')}`;
+    if (!document.querySelector(`.${className}`)) {
+      const style = document.createElement('style');
+      style.innerHTML = `.${className} { color: ${color} !important; }`;
+      document.head.appendChild(style);
+    }
+    return className;
+  };
 
+  const handleThemeChange = (newTheme) => {
+    setTheme(newTheme);
+    if (!hotInstance) return;
+    window.location.reload();
+  };
 
+  const handleSearch = (query) => {
+    setSearchQuery(query);
+    if (hotInstance) {
+      const searchPlugin = hotInstance.getPlugin('search');
+      searchPlugin.query(query);
+      hotInstance.render();
+    }
+  };
 
+  const applyFontSizeStyle = (size) => {
+    const className = `font-size-${size}`;
+    if (!document.querySelector(`.${className}`)) {
+      const style = document.createElement('style');
+      style.innerHTML = `.${className} { font-size: ${size}px !important; }`;
+      document.head.appendChild(style);
+    }
+    return className;
+  };
 
-    <select 
-      name="Themes" 
-      className="bg-fuchsia-700 px-3 py-1 rounded-lg text-white focus:ring-2 focus:ring-cyan-500"
-      value={theme}
-      onChange={(e) => handleThemeChange(e.target.value)}
-    >
-      <option value="ht-theme-main">Light Blue</option>
-      <option value="ht-theme-main-dark">Dark Blue</option>
-      <option value="ht-theme-horizon">Horizon Light Green</option>
-      <option value="ht-theme-horizon-dark">Horizon Dark Yellow</option>
-      <option value="no theme">No theme</option>
-    </select>
+  const handleIncreaseFontSize = () => {
+    setFontSize(prev => {
+      const newSize = prev + 2;
+      applyStyleToSelection(applyFontSizeStyle(newSize), 'font-size');
+      return newSize;
+    });
+  };
 
-    <ColumnTypeSelector hotInstance={hotInstance} />
+  const handleDecreaseFontSize = () => {
+    setFontSize(prev => {
+      const newSize = Math.max(8, prev - 2);
+      applyStyleToSelection(applyFontSizeStyle(newSize), 'font-size');
+      return newSize;
+    });
+  };
 
-  </div>
+  const applyStyleToSelection = (styleClass, styleType) => {
+    if (!hotInstance || !selectedCells) return;
+    selectedCells.forEach(([startRow, startCol, endRow, endCol]) => {
+      for (let row = Math.min(startRow, endRow); row <= Math.max(startRow, endRow); row++) {
+        for (let col = Math.min(startCol, endCol); col <= Math.max(startCol, endCol); col++) {
+          const existingClass = hotInstance.getCellMeta(row, col).className || '';
+          let baseClass = existingClass;
+          if (styleType === 'font-size') {
+            baseClass = existingClass.replace(/\bfont-size-\d+\b/g, '').trim();
+          } else if (styleType === 'bg-color') {
+            baseClass = existingClass.replace(/\bbg-[0-9a-f]+\b/g, '').trim();
+          } else if (styleType === 'text-color') {
+            baseClass = existingClass.replace(/\btext-[0-9a-f]+\b/g, '').trim();
+          }
+          hotInstance.setCellMeta(row, col, 'className', baseClass ? `${baseClass} ${styleClass}` : styleClass);
+        }
+      }
+    });
+    hotInstance.render();
+  };
 
-  {/* Center Section: Color Selection */}
+  const handleBgColorChange = (color) => {
+    setBgColor(color);
+    const styleClass = applyDynamicStyle(color);
+    applyStyleToSelection(styleClass, 'bg-color');
+  };
 
+  const handleTextColorChange = (color) => {
+    setTextColor(color);
+    const styleClass = applyTextColorStyle(color);
+    applyStyleToSelection(styleClass, 'text-color');
+  };
 
-  {/* Right Section: Other Features */}
-  <div className="flex flex-wrap items-center gap-3">
-  <div className="flex flex-wrap items-center gap-3">
-
-    {/* Font Size + Color Controls — consistent with header button style */}
-    <div className="flex items-center gap-2">
-
-      {/* Font Size Controls */}
-      <div className="flex items-center rounded-md overflow-hidden border border-gray-600">
-        <button
-          onClick={handleDecreaseFontSize}
-          className="bg-gray-700 hover:bg-gray-600 px-2 py-1 text-white flex items-center transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-          title="Decrease font size"
-          disabled={!selectedCells}
-        >
-          <Minus className="w-3 h-3" />
-        </button>
-        <div className="px-2 py-1 text-white flex items-center gap-1 bg-gray-800 select-none">
-          <Type className="w-3 h-3 text-gray-400" />
-          <span className="text-xs font-medium tabular-nums w-7 text-center">{fontSize}px</span>
-        </div>
-        <button
-          onClick={handleIncreaseFontSize}
-          className="bg-gray-700 hover:bg-gray-600 px-2 py-1 text-white flex items-center transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-          title="Increase font size"
-          disabled={!selectedCells}
-        >
-          <Plus className="w-3 h-3" />
-        </button>
-      </div>
-
-      {/* Background Color */}
-      <label
-        className={`flex items-center gap-1.5 bg-gray-700 hover:bg-gray-600 transition-colors px-2 py-1 rounded-md cursor-pointer border border-gray-600 ${!selectedCells ? 'opacity-40 cursor-not-allowed pointer-events-none' : ''}`}
-        title="Select background color"
-      >
-        <span
-          className="w-4 h-4 rounded-sm border border-gray-500 flex-shrink-0"
-          style={{ backgroundColor: bgColor }}
-        />
-        <input
-          type="color"
-          value={bgColor}
-          onChange={(e) => handleBgColorChange(e.target.value)}
-          className="sr-only"
-          disabled={!selectedCells}
-        />
-        <span className="text-xs text-gray-200 whitespace-nowrap">Bg</span>
-      </label>
-
-      {/* Text Color */}
-      <label
-        className={`flex items-center gap-1.5 bg-gray-700 hover:bg-gray-600 transition-colors px-2 py-1 rounded-md cursor-pointer border border-gray-600 ${!selectedCells ? 'opacity-40 cursor-not-allowed pointer-events-none' : ''}`}
-        title="Select text color"
-      >
-        <span
-          className="w-4 h-4 rounded-sm border border-gray-500 flex-shrink-0"
-          style={{ backgroundColor: textColor }}
-        />
-        <input
-          type="color"
-          value={textColor}
-          onChange={(e) => handleTextColorChange(e.target.value)}
-          className="sr-only"
-          disabled={!selectedCells}
-        />
-        <span className="text-xs text-gray-200 whitespace-nowrap">Text</span>
-      </label>
-
-    </div>
-
-    
-    
-  </div>
-    {isAuthenticated && <ChatFeature hotInstance={hotInstance} />}
-    {isAuthenticated && <SpreadsheetAssistant hotInstance={hotInstance}/>}
-   {/* {isAuthenticated &&  <VideoCall fileNameFromUser={fileUrl} ws={useWebSocketStore.getState().socket} />} */}
-
-{isAuthenticated &&    <button 
-      className="px-3 py-1 bg-indigo-700 rounded-lg hover:bg-pink-500 transition"
-      onClick={() => navigate("/whiteboard")}
-    >
-      Whiteboard
-    </button>}
-    {isAuthenticated && (
-      <span className="relative text-sm font-bold border-2 px-2 py-1 rounded-lg overflow-hidden text-black animate-gradient whitespace-pre">
-  📋 {fileUserName?.length > 10 ? fileUserName.slice(0, 30) + "..." : fileUserName}
-</span>
-
-)}
-
-  </div>
-
-</div>
-
-
-        <header className="z-[1100] bg-gray-900">
-          
-    <div className="px-4 relative">
-      
-      <div className="flex items-center justify-between gap-2">
-        {/* Left Section */}
-        <div className="flex items-center gap-4">
-
-
-          {/* Logo */}
-
-
-          {/* File Dropdown */}
+  return (
+    <div className="fixed top-0 w-full shadow-lg" style={{ zIndex: 1110 }}>
+      {/* --- TOP TOOLBAR --- */}
+      <div className="py-2 px-2 md:px-4 text-white flex items-center justify-between gap-4 w-full bg-gray-900 overflow-x-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
+        
+        {/* Left Section: Logo & Theme Selector */}
+        <div className="flex items-center gap-2 md:gap-3 flex-shrink-0">
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="default" className="bg-red-600 hover:bg-red-700 text-white" >
-                <Menu className="w-4 h-4 mr-2" />
-                File
-                <ChevronDown className="w-4 h-4 ml-2" />
+              <Button variant="default" className="bg-gray-900 text-white w-auto px-2 md:w-[185px] rounded-none h-8 focus:outline-none shrink-0" >
+                <img
+                  className="w-20 sm:w-24 md:w-32 object-contain"
+                  src="/sheetwise-high-resolution-logo.png"
+                  alt="Sheetwise Logo"
+                />
+                <ChevronDown className="w-4 h-4 ml-1 hidden sm:block" />
               </Button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent
-                style={{ zIndex: 1200 }}
-            className="w-48 bg-white shadow-lg rounded-md border border-gray-200">
-{!isAuthenticated &&               <DropdownMenuItem 
-                onClick={() => {
-                  setUploadTarget("import");
-                  fileInputRef.current?.click();
-                }}
-            
+            <DropdownMenuContent style={{ zIndex: 1200 }} className="w-48 bg-white shadow-lg rounded-md border border-gray-200">
+              <DropdownMenuItem
+                onClick={() => navigate("/contact_us")}
                 className={`hover:bg-red-100 cursor-pointer ${isUploading ? "opacity-50 cursor-not-allowed" : ""}`}
                 disabled={isUploading}
               >
-                <Upload className="w-4 h-4 mr-2" />
-                Import CSV
-              </DropdownMenuItem>}
-{
-  isAuthenticated &&                 <DropdownMenuItem 
-  onClick={() => {
-    setUploadTarget("s3");
-    fileInputRef.current?.click();
-  }}
-  className={`hover:bg-gray-100 cursor-pointer ${isUploading ? "opacity-50 cursor-not-allowed" : ""}`}
-  disabled={isUploading}
->
-  <Upload className="w-4 h-4 mr-2" />
-  Upload to Cloud
-</DropdownMenuItem>
-}
-              <DropdownMenuItem 
-                onClick={handleExportCSV}
-                className="hover:bg-gray-100 cursor-pointer"
+                <Navigation className="mr-2 w-4 h-4" />
+                Contact Us
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onClick={() => navigate("/documentation")}
+                className={`hover:bg-red-100 cursor-pointer ${isUploading ? "opacity-50 cursor-not-allowed" : ""}`}
+                disabled={isUploading}
               >
-                <Download className="w-4 h-4 mr-2" />
-                Export CSV
+                <Navigation className="mr-2 w-4 h-4" />
+                Documentation
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
 
-          {/* Admin Panel Button */}
-{isAuthenticated && <div className="text-white bg-orange-600 px-2 py-[7px] rounded-md">
-            <button
-        
-            disabled={isUploading} onClick={() => navigate("/admin")}>🔑 Admin Panel</button>
-            
-          </div>}
-          <VisualizationPanel hotInstance={hotInstance}/>
-        </div>
+          <select
+            name="Themes"
+            className="bg-fuchsia-700 px-2 py-1 sm:px-3 sm:py-1.5 rounded-lg text-white text-xs sm:text-sm focus:ring-2 focus:ring-cyan-500 flex-shrink-0 outline-none"
+            value={theme}
+            onChange={(e) => handleThemeChange(e.target.value)}
+          >
+            <option value="ht-theme-main">Light Blue</option>
+            <option value="ht-theme-main-dark">Dark Blue</option>
+            <option value="ht-theme-horizon">Horizon Light</option>
+            <option value="ht-theme-horizon-dark">Horizon Dark</option>
+            <option value="no theme">No theme</option>
+          </select>
 
-        {/* Center Section (Visualization Panel) */}
-        <div className="relative z-50">
-          {/* Placeholder for VisualizationPanel */}
-          
-        </div>
-
-<div>
-<input 
-              className='border-2 border-blue-600 w-16 p-1 text-center mx-2' 
-              type="number" 
-              defaultValue={10} 
-              min="1"
-              onChange={(e) => setRows(e.target.value)} 
-            />
-            <button
-              className='bg-blue-500 p-1 rounded-md text-white hover:bg-blue-600 transition-colors md:text-base'
-              onClick={() => addRows(Rows)}
-            >
-              Add {Rows} Rows
-            </button>
-
-            <input 
-              className='border-2 border-blue-600 w-16 mx-2 p-1 text-center' 
-              type="number" 
-              defaultValue={1} 
-              min="1"
-              onChange={(e) => setCols(e.target.value)} 
-            />
-            <button
-              className='bg-green-500 p-1 rounded-md text-white hover:bg-green-600 transition-colors text-sm md:text-base'
-              onClick={() => addColumns(Cols)}
-            >
-              Add {Cols} Columns
-            </button>    
-</div>
-
-        {/* Right Section */}
-        <div className="flex items-center gap-4">
-          {/* Search Input */}
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
-            <Input
-              type="search"
-              value={searchQuery}
-              onChange={(e) => handleSearch(e.target.value)}
-              placeholder="Search spreadsheet..."
-              className="pl-10 w-full sm:w-64 md:w-80 lg:w-44 bg-white rounded-md focus:ring-2 focus:ring-green-500 focus:outline-none transition-all"
-            />
-
+          <div className="flex-shrink-0">
+            <ColumnTypeSelector hotInstance={hotInstance} />
           </div>
-          {/* Add ChatFeature here */}
+        </div>
 
-
-          {/* Storage Indicator Button */}
-          <div className="relative">
-      {isAuthenticated && <Button
-              variant="default"
-              className="bg-yellow-500 hover:bg-lime-600 text-black"
-              onClick={() => setShowStorage(!showStorage)}
-              data-storage-indicator
-            >
-              🛢 Storage
-            </Button>}
-            {showStorage && (
-              <div className="absolute right-0 mt-2">
-                {/* StorageIndicator component */}
-                <StorageIndicator/>
+        {/* Right Section: Tools */}
+        <div className="flex items-center gap-2 md:gap-3 flex-shrink-0">
+          <div className="flex items-center gap-1 sm:gap-2">
+            {/* Font Size Controls */}
+            <div className="flex items-center rounded-md overflow-hidden border border-gray-600 flex-shrink-0">
+              <button
+                onClick={handleDecreaseFontSize}
+                className="bg-gray-700 hover:bg-gray-600 px-1.5 sm:px-2 py-1 text-white flex items-center transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                title="Decrease font size"
+                disabled={!selectedCells}
+              >
+                <Minus className="w-3 h-3" />
+              </button>
+              <div className="px-1.5 sm:px-2 py-1 text-white flex items-center gap-1 bg-gray-800 select-none">
+                <Type className="w-3 h-3 text-gray-400 hidden sm:block" />
+                <span className="text-xs font-medium tabular-nums w-6 sm:w-7 text-center">{fontSize}</span>
               </div>
+              <button
+                onClick={handleIncreaseFontSize}
+                className="bg-gray-700 hover:bg-gray-600 px-1.5 sm:px-2 py-1 text-white flex items-center transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                title="Increase font size"
+                disabled={!selectedCells}
+              >
+                <Plus className="w-3 h-3" />
+              </button>
+            </div>
+
+            {/* Background Color */}
+            <label className={`flex items-center gap-1 bg-gray-700 hover:bg-gray-600 transition-colors px-1.5 sm:px-2 py-1 rounded-md cursor-pointer border border-gray-600 flex-shrink-0 ${!selectedCells ? 'opacity-40 cursor-not-allowed pointer-events-none' : ''}`} title="Select background color">
+              <span className="w-3 h-3 sm:w-4 sm:h-4 rounded-sm border border-gray-500 flex-shrink-0" style={{ backgroundColor: bgColor }} />
+              <input type="color" value={bgColor} onChange={(e) => handleBgColorChange(e.target.value)} className="sr-only" disabled={!selectedCells} />
+              <span className="text-xs text-gray-200 hidden sm:block">Bg</span>
+            </label>
+
+            {/* Text Color */}
+            <label className={`flex items-center gap-1 bg-gray-700 hover:bg-gray-600 transition-colors px-1.5 sm:px-2 py-1 rounded-md cursor-pointer border border-gray-600 flex-shrink-0 ${!selectedCells ? 'opacity-40 cursor-not-allowed pointer-events-none' : ''}`} title="Select text color">
+              <span className="w-3 h-3 sm:w-4 sm:h-4 rounded-sm border border-gray-500 flex-shrink-0" style={{ backgroundColor: textColor }} />
+              <input type="color" value={textColor} onChange={(e) => handleTextColorChange(e.target.value)} className="sr-only" disabled={!selectedCells} />
+              <span className="text-xs text-gray-200 hidden sm:block">Text</span>
+            </label>
+          </div>
+
+          <div className="flex items-center gap-2 flex-shrink-0">
+            {/* {isAuthenticated && <ChatFeature hotInstance={hotInstance} />} */}
+            {isAuthenticated && <SpreadsheetAssistant hotInstance={hotInstance} />}
+            
+            {isAuthenticated && (
+              <button
+                className="px-2 py-1 sm:px-3 sm:py-1.5 text-xs sm:text-sm bg-indigo-700 rounded-lg hover:bg-pink-500 transition whitespace-nowrap"
+                onClick={() => navigate("/whiteboard")}
+              >
+                Whiteboard
+              </button>
+            )}
+            
+            {isAuthenticated && (
+              <span className="text-xs sm:text-sm font-bold border-2 px-2 py-1 rounded-lg overflow-hidden text-black animate-gradient whitespace-nowrap max-w-[120px] sm:max-w-[200px] truncate">
+                📋 {fileUserName}
+              </span>
             )}
           </div>
-
-          {/* New File Button */}
-          {isAuthenticated && <NewFileButton disabled={isUploading}/>}
-
-          {/* User Profile (AuthGuard) */}
-          {!isUploading && <AuthGuard disabled={isUploading}>
-            <UserProfile />
-          </AuthGuard>}
-
         </div>
       </div>
-    </div>
 
-    {/* File Input */}
-    <input
-      type="file"
-      ref={fileInputRef}
-      accept=".csv"
-      onChange={handleFileChange}
-      className="hidden"
-      disabled={isUploading}
-    />
+      {/* --- BOTTOM TOOLBAR --- */}
+      <header className="z- bg-gray-800 border-t border-gray-700">
+        <div className="px-2 md:px-4 py-2 w-full overflow-x-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
+          
+          <div className="flex items-center justify-between gap-4 min-w-max">
+            
+            {/* Left Section */}
+            <div className="flex items-center gap-2 sm:gap-4 flex-shrink-0">
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="default" size="sm" className="bg-red-600 hover:bg-red-700 text-white text-xs sm:text-sm h-8">
+                    <Menu className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" />
+                    File
+                    <ChevronDown className="w-3 h-3 sm:w-4 sm:h-4 ml-1 sm:ml-2" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent style={{ zIndex: 1200 }} className="w-48 bg-white shadow-lg rounded-md border border-gray-200">
+                  {!isAuthenticated && (
+                    <DropdownMenuItem
+                      onClick={() => { setUploadTarget("import"); fileInputRef.current?.click(); }}
+                      className={`hover:bg-red-100 cursor-pointer ${isUploading ? "opacity-50 cursor-not-allowed" : ""}`}
+                      disabled={isUploading}
+                    >
+                      <Upload className="w-4 h-4 mr-2" /> Import CSV
+                    </DropdownMenuItem>
+                  )}
+                  {isAuthenticated && (
+                    <DropdownMenuItem
+                      onClick={() => { setUploadTarget("s3"); fileInputRef.current?.click(); }}
+                      className={`hover:bg-gray-100 cursor-pointer ${isUploading ? "opacity-50 cursor-not-allowed" : ""}`}
+                      disabled={isUploading}
+                    >
+                      <Upload className="w-4 h-4 mr-2" /> Upload to Cloud
+                    </DropdownMenuItem>
+                  )}
+                  <DropdownMenuItem onClick={handleExportCSV} className="hover:bg-gray-100 cursor-pointer">
+                    <Download className="w-4 h-4 mr-2" /> Export CSV
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
 
-    {/* Upload Progress Bar */}
-    {uploadProgress > 0 && uploadProgress < 100 && (
-      <div className="w-full bg-gray-300 rounded-md mt-2">
-        <div
-          className="bg-blue-600 text-xs leading-none py-1 text-center text-white rounded-md"
-          style={{ width: `${uploadProgress}%` }}
-        >
-          {uploadProgress}%
+              {isAuthenticated && (
+                <button
+                  disabled={isUploading}
+                  onClick={() => navigate("/admin")}
+                  className="bg-orange-600 hover:bg-orange-700 text-white text-xs sm:text-sm px-2 sm:px-3 py-1.5 rounded-md transition-colors whitespace-nowrap h-8 flex items-center"
+                >
+                  🔑 Admin
+                </button>
+              )}
+              
+              <div className="flex-shrink-0">
+                <VisualizationPanel hotInstance={hotInstance} />
+              </div>
+            </div>
+
+            {/* Center Section (Row/Col Adders) */}
+            <div className="flex items-center gap-2 flex-shrink-0 bg-gray-900 px-2 py-1 rounded-md">
+              <div className="flex items-center">
+                <input
+                  className='border border-blue-600 bg-gray-800 text-white w-10 sm:w-12 h-7 p-1 text-center text-xs sm:text-sm rounded-l focus:outline-none'
+                  type="number"
+                  defaultValue={10}
+                  min="1"
+                  onChange={(e) => setRows(e.target.value)}
+                />
+                <button
+                  className='bg-blue-600 h-7 px-2 text-white hover:bg-blue-500 transition-colors text-xs sm:text-sm rounded-r whitespace-nowrap'
+                  onClick={() => addRows(Rows)}
+                >
+                  + Rows
+                </button>
+              </div>
+
+              <div className="w-px h-5 bg-gray-600 mx-1 hidden sm:block"></div>
+
+              <div className="flex items-center">
+                <input
+                  className='border border-green-600 bg-gray-800 text-white w-10 sm:w-12 h-7 p-1 text-center text-xs sm:text-sm rounded-l focus:outline-none'
+                  type="number"
+                  defaultValue={1}
+                  min="1"
+                  onChange={(e) => setCols(e.target.value)}
+                />
+                <button
+                  className='bg-green-600 h-7 px-2 text-white hover:bg-green-500 transition-colors text-xs sm:text-sm rounded-r whitespace-nowrap'
+                  onClick={() => addColumns(Cols)}
+                >
+                  + Cols
+                </button>
+              </div>
+            </div>
+
+            {/* Right Section */}
+            <div className="flex items-center gap-2 sm:gap-4 flex-shrink-0">
+              <div className="relative flex-shrink-0">
+                <Search className="absolute left-2.5 top-1/2 transform -translate-y-1/2 text-gray-400 w-3.5 h-3.5" />
+                <Input
+                  type="search"
+                  value={searchQuery}
+                  onChange={(e) => handleSearch(e.target.value)}
+                  placeholder="Search..."
+                  className="pl-8 h-8 w-28 sm:w-40 md:w-56 bg-gray-900 border-gray-600 text-white text-xs sm:text-sm rounded-md focus:ring-1 focus:ring-green-500 focus:outline-none transition-all"
+                />
+              </div>
+
+              <div className="relative flex-shrink-0">
+                {isAuthenticated && (
+                  <Button
+                    variant="default"
+                    size="sm"
+                    className="bg-yellow-500 hover:bg-lime-600 text-black text-xs sm:text-sm h-8 px-2 sm:px-3"
+                    onClick={() => setShowStorage(!showStorage)}
+                    data-storage-indicator
+                  >
+                    🛢 <span className="hidden sm:inline ml-1">Storage</span>
+                  </Button>
+                )}
+
+              </div>
+
+              <div className="flex-shrink-0">
+                {isAuthenticated && <NewFileButton disabled={isUploading} />}
+              </div>
+
+              <div className="flex-shrink-0">
+                {!isUploading && (
+                  <AuthGuard disabled={isUploading}>
+                    <UserProfile />
+                  </AuthGuard>
+                )}
+              </div>
+            </div>
+
+          </div>
         </div>
-      </div>
-    )}
-  </header>
 
-      </div>
+        {/* Hidden Inputs / Progress bars */}
+        <input
+          type="file"
+          ref={fileInputRef}
+          accept=".csv,.xlsx,.xls"
+          onChange={handleFileChange}
+          className="hidden"
+          disabled={isUploading}
+        />
+
+        {uploadProgress > 0 && uploadProgress < 100 && (
+          <div className="w-full bg-gray-300">
+            <div
+              className="bg-blue-600 text-[10px] leading-none py-0.5 text-center text-white"
+              style={{ width: `${uploadProgress}%` }}
+            >
+              {uploadProgress}%
+            </div>
+          </div>
+        )}
+      </header>
+
+      {showStorage && (
+        <div className="absolute right-32 top-[85px] sm:top-[110px] z- bg-white shadow-xl rounded-md border border-gray-200">
+          <StorageIndicator />
+        </div>
+      )}
+      {isAuthenticated && (
+        <div className="absolute top-[9px] right-[520px]">
+          <ChatFeature hotInstance={hotInstance} />
+        </div>
+      )}
       
-    );
-  }
 
-  export default SpreadsheetHeader;
+    </div>
+  );
+}
+
+export default SpreadsheetHeader;

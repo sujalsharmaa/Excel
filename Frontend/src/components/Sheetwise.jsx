@@ -302,16 +302,16 @@ const Sheetwise = () => {
   return (
     <div className="flex flex-col h-screen">
       {/* Header section */}
-      <div className="flex-none">
+
         <SpreadsheetHeader hotInstance={hotTableRef.current?.hotInstance} />
-      </div>
+      
       
       {/* Main content section */}
       <div 
-        className="flex-grow relative overflow-hidden"
+        className="absolute top-[24px] bottom-0 left-0 right-0 overflow-hidden"
         style={{
           paddingTop: isMobile ? "64px" : "96px",
-          height: isMobile ? `${windowSize.height - 120}px` : "calc(100vh - 120px)"
+          height: isMobile ? `${windowSize.height - 120}px` : "calc(100vh - 20px)"
         }}
       >
         <HotTable
